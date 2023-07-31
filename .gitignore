@@ -2,7 +2,6 @@
 *.log
 *.json
 *.yaml
-ckpt
 data
 output
 

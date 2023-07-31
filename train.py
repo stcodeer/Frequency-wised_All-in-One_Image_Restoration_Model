@@ -13,12 +13,27 @@ from option import options as opt
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)
+    subprocess.check_output(['mkdir', '-p', opt.output_path])
     subprocess.check_output(['mkdir', '-p', opt.ckpt_path])
-
+    train_log_file = open(opt.output_path + 'train.log', "w")
+    opt_log_file = open(opt.output_path + 'options.log', "w")
+    
+    opt_log_file.write(f"|{'=' * 201}|")
+    opt_log_file.write("\n")
+    for key, value in opt.__dict__.items():
+        opt_log_file.write(f"|{str(key):>100s}|{str(value):<100s}|")
+        opt_log_file.write("\n")
+    opt_log_file.write(f"|{'=' * 201}|")
+    opt_log_file.write("\n")
+    opt_log_file.close()
+    
+    # print('start loading data...')
     trainset = TrainDataset(opt)
     trainloader = DataLoader(trainset, batch_size=opt.batch_size, pin_memory=True, shuffle=True,
                              drop_last=True, num_workers=opt.num_workers)
-
+    print('loading %s data pairs in total.'%(str(trainset.len())))
+    
+    # print('start init network...')
     # Network Construction
     net = AirNet(opt).cuda()
     net.train()
@@ -56,14 +71,22 @@ if __name__ == '__main__':
                 'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
                     epoch, contrast_loss.item(),
                 ), '\r', end='')
+            train_log_file.write(
+                'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
+                    epoch, contrast_loss.item(),
+                ))
         else:
             print(
                 'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
                     epoch, l1_loss.item(), contrast_loss.item(),
                 ), '\r', end='')
+            train_log_file.write(
+                'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
+                    epoch, l1_loss.item(), contrast_loss.item(),
+                ))
 
         GPUS = 1
-        if (epoch + 1) % 50 == 0:
+        if (epoch + 1) % 50 == 0 or epoch + 1 == opt.epochs:
             checkpoint = {
                 "net": net.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -82,3 +105,5 @@ if __name__ == '__main__':
             lr = 0.0001 * (0.5 ** ((epoch - opt.epochs_encoder) // 125))
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
+                
+    train_log_file.close()
