@@ -75,7 +75,7 @@ if __name__ == '__main__':
                 'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
                     epoch, contrast_loss.item(),
                 ))
-            train_log_file.fflush()
+            train_log_file.flush()
         else:
             print(
                 'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
@@ -85,7 +85,7 @@ if __name__ == '__main__':
                 'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
                     epoch, l1_loss.item(), contrast_loss.item(),
                 ))
-            train_log_file.fflush()
+            train_log_file.flush()
 
         GPUS = 1
         if epoch + 1 == opt.epochs:
