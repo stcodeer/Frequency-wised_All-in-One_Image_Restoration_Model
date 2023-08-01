@@ -1,14 +1,16 @@
 from torch import nn
 
 from net.DGRN import DGRN as Decoder
+from net.encoder_ResNet import ResNetEncoder
+from net.encoder_ViT import ViTEncoder
 from net.moco import MoCo
 
 
 class Encoder(nn.Module):
     def __init__(self, opt):
         super(Encoder, self).__init__()
-
-        encoder = locals()[opt.encoder_type + 'Encoder']
+        
+        encoder = globals()[opt.encoder_type + 'Encoder']
         
         if opt.encoder_type == 'ResNet':
             dim = 256
