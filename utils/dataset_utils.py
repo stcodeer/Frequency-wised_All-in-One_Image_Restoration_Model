@@ -77,10 +77,12 @@ class TrainDataset(Dataset):
             else:
                 data_dir = 'data/' + self.de_type[i] + '_train/'
                 self.gt_ids[i], self.input_ids[i] = get_data_ids(data_dir, False)
+                
+            for i in reversed(range(1, len(self.gt_ids[i]))):
+                j = random.randrange(1, i + 1)
+                self.gt_ids[i], self.gt_ids[j] = self.gt_ids[j], self.gt_ids[i]
+                self.input_ids[i], self.input_ids[j] = self.input_ids[j], self.input_ids[i]
         
-        random.shuffle(self.gt_ids[i])
-        random.shuffle(self.input_ids[i])
-
     def __getitem__(self, _):
         de_num = self.de_type_iterator % len(self.de_type)
         
