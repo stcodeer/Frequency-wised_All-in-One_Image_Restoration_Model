@@ -42,17 +42,17 @@ def experiment(hyperparams, train, test):
 train = True
 test = True
 
-hyperparams4 = "--crop_test_imgs_size 512 --de_type 'denoising_15' 'denoising_25' 'denoising_50' 'deraining' 'dehazing' --test_de_type 'denoising_15' 'denoising_25' 'denoising_50' 'deraining' 'dehazing' "
-experiment(hyperparams4, train, test)
+hyperparams1 = "--crop_test_imgs_size 512 --de_type denoising_15 denoising_25 denoising_50 deraining dehazing --test_de_type denoising_15 denoising_25 denoising_50 deraining dehazing "
+experiment(hyperparams1, train, test)
 
 hyperparams2 = "--crop_test_imgs_size 128"
 experiment(hyperparams2, train, test)
 
-hyperparams1 = "--encoder_type 'ViT' --crop_test_imgs_size 128"
-experiment(hyperparams1, train, test)
-
-hyperparams3 = "--crop_test_imgs_size 512"
+hyperparams3 = "--encoder_type ViT --crop_test_imgs_size 128"
 experiment(hyperparams3, train, test)
+
+hyperparams4 = "--crop_test_imgs_size 512"
+experiment(hyperparams4, train, test)
 
 
 log_file.close()
