@@ -15,7 +15,7 @@ parser.add_argument('--test_de_type', type=list, default=['denoising_15', 'denoi
                     help='which type of degradations are testing for.')
 
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
-parser.add_argument('--encoder_dim', type=int, default=256, help='the dimensionality of encoder.')
+# parser.add_argument('--encoder_dim', type=int, default=256, help='the dimensionality of encoder.')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
 
 parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
@@ -23,6 +23,9 @@ parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop t
 
 # Path
 parser.add_argument('--output_path', type=str, default='output/tmp/', help='output and checkpoint save path')
+
+# Network Hyperparameters
+parser.add_argument('--encoder_type', type=str, default='ResNet', help="should be in '[ResNet, ViT]'")
 
 
 options = parser.parse_args()

@@ -37,7 +37,7 @@ def experiment(hyperparams, train, test):
     log_file.flush()
 
 
-hyperparams = '--epochs 1'
+hyperparams = "--epochs 1 --encoder_type 'ViT' --crop_test_imgs_size 128"
 
 train = True
 test = True

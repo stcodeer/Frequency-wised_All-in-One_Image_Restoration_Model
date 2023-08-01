@@ -1,5 +1,4 @@
 from torch import nn
-from net.moco import MoCo
 
 
 class ResBlock(nn.Module):
@@ -21,9 +20,11 @@ class ResBlock(nn.Module):
         return nn.LeakyReLU(0.1, True)(self.backbone(x) + self.shortcut(x))
 
 
-class ResEncoder(nn.Module):
-    def __init__(self):
-        super(ResEncoder, self).__init__()
+class ResNetEncoder(nn.Module):
+    def __init__(self, opt, dim):
+        super(ResNetEncoder, self).__init__()
+        
+        assert dim == 256
 
         self.E_pre = ResBlock(in_feat=3, out_feat=64, stride=1)
         self.E = nn.Sequential(
@@ -44,24 +45,3 @@ class ResEncoder(nn.Module):
         out = self.mlp(fea)
 
         return fea, out, inter
-
-
-class CBDE(nn.Module):
-    def __init__(self, opt):
-        super(CBDE, self).__init__()
-
-        dim = 256
-
-        # Encoder
-        self.E = MoCo(base_encoder=ResEncoder, dim=dim, K=opt.batch_size * dim)
-
-    def forward(self, x_query, x_key):
-        if self.training:
-            # degradation-aware represenetion learning
-            fea, logits, labels, inter = self.E(x_query, x_key)
-
-            return fea, logits, labels, inter
-        else:
-            # degradation-aware represenetion learning
-            fea, inter = self.E(x_query, x_query)
-            return fea, inter
