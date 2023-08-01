@@ -151,8 +151,8 @@ class TestDataset(Dataset):
             input_img = crop_img(np.array(Image.open(input_id).convert('RGB')), base=16)
             input_name = input_id.split("/")[-1].split('.')[0]
         
-        if self.args.crop_test_imgs and input_img.shape[0] > 512 and input_img.shape[1] > 512:
-            input_img, gt_img = _crop_patch(input_img, gt_img, size=512)
+        if input_img.shape[0] > self.args.crop_test_imgs_size and input_img.shape[1] > self.args.crop_test_imgs_size:
+            input_img, gt_img = _crop_patch(input_img, gt_img, size=self.args.crop_test_imgs_size)
             
         input_img = self.toTensor(input_img)
         gt_img = self.toTensor(gt_img)
