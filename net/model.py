@@ -12,13 +12,8 @@ class Encoder(nn.Module):
         
         encoder = globals()[opt.encoder_type + 'Encoder']
         
-        if opt.encoder_type == 'ResNet':
-            dim = 256
-        elif opt.encoder_type == 'ViT':
-            dim = 768
-        
         # Encoder
-        self.E = MoCo(opt=opt, base_encoder=encoder, dim=dim, K=opt.batch_size * dim)
+        self.E = MoCo(opt=opt, base_encoder=encoder, dim=opt.encoder_dim, K=opt.batch_size * opt.encoder_dim)
 
     def forward(self, x_query, x_key):
         if self.training:

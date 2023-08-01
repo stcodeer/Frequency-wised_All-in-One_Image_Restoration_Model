@@ -8,7 +8,7 @@ class MoCo(nn.Module):
     Build a MoCo model with: a query encoder, a key encoder, and a queue
     https://arxiv.org/abs/1911.05722
     """
-    def __init__(self, opt, base_encoder, dim=256, K=3*256, m=0.999, T=0.07, mlp=False):
+    def __init__(self, opt, base_encoder, dim, K=3*256, m=0.999, T=0.07, mlp=False):
         """
         dim: feature dimension (default: 128)
         K: queue size; number of negative keys (default: 65536)
@@ -25,8 +25,8 @@ class MoCo(nn.Module):
 
         # create the encoders
         # num_classes is the output fc dimension
-        self.encoder_q = base_encoder(opt, dim)
-        self.encoder_k = base_encoder(opt, dim)
+        self.encoder_q = base_encoder(opt)
+        self.encoder_k = base_encoder(opt)
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data.copy_(param_q.data)  # initialize

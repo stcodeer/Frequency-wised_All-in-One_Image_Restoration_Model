@@ -15,7 +15,6 @@ parser.add_argument('--test_de_type', type=list, default=['denoising_15', 'denoi
                     help='which type of degradations are testing for.')
 
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
-# parser.add_argument('--encoder_dim', type=int, default=256, help='the dimensionality of encoder.')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
 
 parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
@@ -26,8 +25,17 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 
 # Network Hyperparameters
 parser.add_argument('--encoder_type', type=str, default='ResNet', help="should be in '[ResNet, ViT]'")
+parser.add_argument('--encoder_dim', type=int, default=None, help='the dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
 
 
 options = parser.parse_args()
+
 options.batch_size = len(options.de_type)
+
 options.ckpt_path = options.output_path + 'ckpt/'
+
+if options.encoder_dim == None:
+    if options.encoder_type == 'ResNet':
+        options.encoder_dim = 256
+    elif options.encoder_type == 'ViT':
+        options.encoder_dim = 3

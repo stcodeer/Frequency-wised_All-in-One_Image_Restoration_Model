@@ -112,7 +112,6 @@ class TransformerEncoder(nn.Sequential):
 
 class ViTEncoder(nn.Sequential):
     def __init__(self, opt,
-                dim: int,
                 in_channels: int = 3,
                 depth: int = 12,
                 patch_size: int = 16,
@@ -121,13 +120,15 @@ class ViTEncoder(nn.Sequential):
         
         self.opt = opt
         
-        img_hsize = opt.patch_size
-        img_wsize = opt.patch_size
+        self.img_hsize = opt.patch_size
+        self.img_wsize = opt.patch_size
         
         assert opt.patch_size == opt.crop_test_imgs_size
+        
+        dim = opt.encoder_dim * patch_size * patch_size
 
         layers = [
-            PatchEmbedding(in_channels, patch_size, dim, img_hsize, img_wsize),
+            PatchEmbedding(in_channels, patch_size, dim, self.img_hsize, self.img_wsize),
             TransformerEncoder(depth, emb_size=dim, **kwargs),
         ]
         
@@ -136,20 +137,15 @@ class ViTEncoder(nn.Sequential):
         self.avg = nn.AdaptiveAvgPool2d(1)
         
         self.mlp = nn.Sequential(
-            nn.Linear(dim, dim),
+            nn.Linear(opt.encoder_dim, opt.encoder_dim),
             nn.LeakyReLU(0.1, True),
-            nn.Linear(dim, dim),
+            nn.Linear(opt.encoder_dim, opt.encoder_dim),
         )
         
     def forward(self, x):
-        inter = self.model(x)
+        inter = self.model(x).reshape(-1, self.opt.encoder_dim, self.img_hsize, self.img_wsize)
         fea = self.avg(inter).squeeze(-1).squeeze(-1)
         out = self.mlp(fea)
-
-        print('x.shape: ', x.shape)
-        print('inter.shape: ', inter.shape)
-        print('fea.shape: ', fea.shape)
-        print('out.shape: ', out.shape)
 
         return fea, out, inter
 

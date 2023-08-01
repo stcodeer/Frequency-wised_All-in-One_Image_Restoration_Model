@@ -21,10 +21,10 @@ class ResBlock(nn.Module):
 
 
 class ResNetEncoder(nn.Module):
-    def __init__(self, opt, dim):
+    def __init__(self, opt):
         super(ResNetEncoder, self).__init__()
         
-        assert dim == 256
+        assert opt.encoder_dim == 256
 
         self.E_pre = ResBlock(in_feat=3, out_feat=64, stride=1)
         self.E = nn.Sequential(
