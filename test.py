@@ -45,6 +45,7 @@ def test_by_task(net, task):
 
         print("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
         test_log_file.write("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
+        test_log_file.close()
 
 
 if __name__ == '__main__':

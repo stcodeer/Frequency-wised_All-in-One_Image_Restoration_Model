@@ -18,12 +18,12 @@ if __name__ == '__main__':
     train_log_file = open(opt.output_path + 'train.log', "w")
     opt_log_file = open(opt.output_path + 'options.log', "w")
     
-    opt_log_file.write(f"|{'=' * 201}|")
+    opt_log_file.write(f"|{'=' * 151}|")
     opt_log_file.write("\n")
     for key, value in opt.__dict__.items():
-        opt_log_file.write(f"|{str(key):>100s}|{str(value):<100s}|")
+        opt_log_file.write(f"|{str(key):>50s}|{str(value):<100s}|")
         opt_log_file.write("\n")
-    opt_log_file.write(f"|{'=' * 201}|")
+    opt_log_file.write(f"|{'=' * 151}|")
     opt_log_file.write("\n")
     opt_log_file.close()
     
@@ -75,6 +75,7 @@ if __name__ == '__main__':
                 'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
                     epoch, contrast_loss.item(),
                 ))
+            train_log_file.fflush()
         else:
             print(
                 'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
@@ -84,6 +85,7 @@ if __name__ == '__main__':
                 'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
                     epoch, l1_loss.item(), contrast_loss.item(),
                 ))
+            train_log_file.fflush()
 
         GPUS = 1
         if (epoch + 1) % 50 == 0 or epoch + 1 == opt.epochs:
