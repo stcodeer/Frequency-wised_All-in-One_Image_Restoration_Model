@@ -17,9 +17,11 @@ parser.add_argument('--test_de_type', type=list, default=['denoising_15', 'denoi
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
 parser.add_argument('--encoder_dim', type=int, default=256, help='the dimensionality of encoder.')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
+parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
 
-# path
-parser.add_argument('--output_path', type=str, default="output/tmp/", help='output and checkpoint save path')
+# Path
+parser.add_argument('--output_path', type=str, default='output/tmp/', help='output and checkpoint save path')
+
 
 options = parser.parse_args()
 options.batch_size = len(options.de_type)

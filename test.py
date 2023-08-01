@@ -16,9 +16,14 @@ from option import options as opt
 
 def test_by_task(net, task):
     print('starting testing %s...'%(task))
+
     output_path = opt.output_path + 'test_' + task + '/'
     subprocess.check_output(['mkdir', '-p', output_path])
     test_log_file = open(output_path + 'test.log', "w")
+    
+    if opt.save_imgs:
+        output_imgs_path = output_path + 'output_imgs/'
+        subprocess.check_output(['mkdir', '-p', output_imgs_path])
     
     testset = TestDataset(opt, task)
     testloader = DataLoader(testset, batch_size=1, pin_memory=True, shuffle=False, num_workers=opt.num_workers)
@@ -34,8 +39,9 @@ def test_by_task(net, task):
             temp_psnr, temp_ssim, N = compute_psnr_ssim(restored, clean_patch)
             psnr.update(temp_psnr, N)
             ssim.update(temp_ssim, N)
-
-            save_image_tensor(restored, output_path + img_name[0] + '.png')
+            
+            if opt.save_imgs:
+                save_image_tensor(restored, output_imgs_path + img_name[0] + '.png')
 
         print("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
         test_log_file.write("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
