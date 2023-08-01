@@ -41,8 +41,18 @@ def get_data_ids(dir, need_synthesize=False):
             input_ids.append(os.path.join(input_dir, file))
         
     return gt_ids, input_ids
-            
-            
+
+def _crop_patch(img_1, img_2, size):
+    H = img_1.shape[0]
+    W = img_1.shape[1]
+    ind_H = random.randint(0, H - size)
+    ind_W = random.randint(0, W - size)
+
+    patch_1 = img_1[ind_H:ind_H + size, ind_W:ind_W + size]
+    patch_2 = img_2[ind_H:ind_H + size, ind_W:ind_W + size]
+
+    return patch_1, patch_2
+
 class TrainDataset(Dataset):
     def __init__(self, args):
         super(TrainDataset, self).__init__()
@@ -71,17 +81,6 @@ class TrainDataset(Dataset):
         random.shuffle(self.gt_ids[i])
         random.shuffle(self.input_ids[i])
 
-    def _crop_patch(self, img_1, img_2):
-        H = img_1.shape[0]
-        W = img_1.shape[1]
-        ind_H = random.randint(0, H - self.args.patch_size)
-        ind_W = random.randint(0, W - self.args.patch_size)
-
-        patch_1 = img_1[ind_H:ind_H + self.args.patch_size, ind_W:ind_W + self.args.patch_size]
-        patch_2 = img_2[ind_H:ind_H + self.args.patch_size, ind_W:ind_W + self.args.patch_size]
-
-        return patch_1, patch_2
-
     def __getitem__(self, _):
         de_num = self.de_type_iterator % len(self.de_type)
         
@@ -99,8 +98,8 @@ class TrainDataset(Dataset):
         else:
             input_img = crop_img(np.array(Image.open(input_id).convert('RGB')), base=16)
 
-        degrad_patch_1, clean_patch_1 = random_augmentation(*self._crop_patch(input_img, gt_img))
-        degrad_patch_2, clean_patch_2 = random_augmentation(*self._crop_patch(input_img, gt_img))
+        degrad_patch_1, clean_patch_1 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
+        degrad_patch_2, clean_patch_2 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
         
         clean_patch_1, clean_patch_2 = self.toTensor(clean_patch_1), self.toTensor(clean_patch_2)
         degrad_patch_1, degrad_patch_2 = self.toTensor(degrad_patch_1), self.toTensor(degrad_patch_2)
@@ -152,6 +151,9 @@ class TestDataset(Dataset):
             input_img = crop_img(np.array(Image.open(input_id).convert('RGB')), base=16)
             input_name = input_id.split("/")[-1].split('.')[0]
         
+        if self.args.crop_test_imgs and input_img.shape[0] > 512 and input_img.shape[1] > 512:
+            input_img, gt_img = _crop_patch(input_img, gt_img, size=512)
+            
         input_img = self.toTensor(input_img)
         gt_img = self.toTensor(gt_img)
         
