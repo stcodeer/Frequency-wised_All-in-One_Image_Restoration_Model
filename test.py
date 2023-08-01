@@ -1,12 +1,12 @@
-import argparse
 import subprocess
 from tqdm import tqdm
 import numpy as np
+import os
 
 import torch
 from torch.utils.data import DataLoader
 
-from utils.dataset_utils import TestDataset
+from utils.dataset_utils import TestDataset, checkout
 from utils.val_utils import AverageMeter, compute_psnr_ssim
 from utils.image_io import save_image_tensor
 
@@ -17,13 +17,15 @@ from option import options as opt
 def test_by_task(net, task):
     print('starting testing %s...'%(task))
 
+    checkout(opt.output_path)
     output_path = opt.output_path + 'test_' + task + '/'
-    subprocess.check_output(['mkdir', '-p', output_path])
+    checkout(output_path)
+        
     test_log_file = open(output_path + 'test.log', "w")
     
     if opt.save_imgs:
         output_imgs_path = output_path + 'output_imgs/'
-        subprocess.check_output(['mkdir', '-p', output_imgs_path])
+        checkout(output_imgs_path)
     
     testset = TestDataset(opt, task)
     testloader = DataLoader(testset, batch_size=1, pin_memory=True, shuffle=False, num_workers=opt.num_workers)

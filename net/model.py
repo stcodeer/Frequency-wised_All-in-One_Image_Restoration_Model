@@ -10,7 +10,7 @@ class Encoder(nn.Module):
     def __init__(self, opt):
         super(Encoder, self).__init__()
         
-        encoder = globals()[opt.encoder_type + 'Encoder']
+        encoder = globals()[(opt.encoder_type + 'Encoder').replace("'","")]
         
         # Encoder
         self.E = MoCo(opt=opt, base_encoder=encoder, dim=opt.encoder_dim, K=opt.batch_size * opt.encoder_dim)

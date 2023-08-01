@@ -35,7 +35,7 @@ options.batch_size = len(options.de_type)
 options.ckpt_path = options.output_path + 'ckpt/'
 
 if options.encoder_dim == None:
-    if options.encoder_type == 'ResNet':
+    if options.encoder_type.replace("'","") == 'ResNet':
         options.encoder_dim = 256
-    elif options.encoder_type == 'ViT':
+    elif options.encoder_type.replace("'","") == 'ViT':
         options.encoder_dim = 3

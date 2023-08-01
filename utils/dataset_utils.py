@@ -10,6 +10,10 @@ from torchvision.transforms import ToTensor
 
 from utils.image_utils import random_augmentation, crop_img
 
+def checkout(path):
+    if not os.path.exists(path):
+        os.mkdir(path)
+
 def get_data_ids(dir, need_synthesize=False):
     input_dir = dir + 'Input/'
     gt_dir = dir + 'GT/'

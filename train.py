@@ -6,15 +6,16 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils.dataset_utils import TrainDataset
+from utils.dataset_utils import TrainDataset, checkout
 from net.model import AirNet
 
 from option import options as opt
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)
-    subprocess.check_output(['mkdir', '-p', opt.output_path])
-    subprocess.check_output(['mkdir', '-p', opt.ckpt_path])
+    checkout(opt.output_path)
+    checkout(opt.ckpt_path)
+
     train_log_file = open(opt.output_path + 'train.log', "w")
     opt_log_file = open(opt.output_path + 'options.log', "w")
     
