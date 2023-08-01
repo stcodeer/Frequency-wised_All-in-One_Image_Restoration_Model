@@ -14,27 +14,34 @@ def tostr(hyperparams):
             str = str + '_' + substr.replace('--', '')
     return str
 
-def experiment(hyperparams):
+def experiment(hyperparams, train, test):
     try:
-        print('%s' % ('training: h ' + hyperparams))
-        os.system('python train.py %s --output_path output/h%s/'%(hyperparams, tostr(hyperparams)))
-        print('%s' % ('testing: h ' + hyperparams))
-        os.system('python test.py %s --output_path output/h%s/'%(hyperparams, tostr(hyperparams)))
+        if train:
+            print('%s' % ('training: h ' + hyperparams))
+            os.system('python train.py %s --output_path output/h%s/'%(hyperparams, tostr(hyperparams)))
+        if test:
+            print('%s' % ('testing: h ' + hyperparams))
+            os.system('python test.py %s --output_path output/h%s/'%(hyperparams, tostr(hyperparams)))
         
     except Exception as e:
         log_file.write('[Error] %s\n' % e)
         
     else:
         log_file.write('[Done]\n')
-        
-    log_file.write('%s\n' % ('training: h' + hyperparams))
-    log_file.write('%s\n' % ('testing: h' + hyperparams))
+    
+    if train:
+        log_file.write('%s\n' % ('training: h' + hyperparams))
+    if test:
+        log_file.write('%s\n' % ('testing: h' + hyperparams))
 
     log_file.flush()
 
 
 hyperparams = '--epochs 1'
 
-experiment(hyperparams)
+train = True
+test = True
+
+experiment(hyperparams, train, test)
 
 log_file.close()
