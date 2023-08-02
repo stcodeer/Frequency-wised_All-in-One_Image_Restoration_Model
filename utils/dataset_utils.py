@@ -1,7 +1,8 @@
+from PIL import Image, ImageFile
+# ImageFile.LOAD_TRUNCATED_IMAGES = True
 import os
 import random
 import copy
-from PIL import Image
 import numpy as np
 import glob
 
@@ -72,6 +73,8 @@ class TrainDataset(Dataset):
         self._init_ids()
 
         self.toTensor = ToTensor()
+        
+        # self.log_file = open('D:\sutong\AirNet\datasets.log', 'w')
 
     def _init_ids(self):
         for i in range(len(self.de_type)):
@@ -83,19 +86,28 @@ class TrainDataset(Dataset):
                 data_dir = 'data/' + self.de_type[i] + '_train/'
                 self.gt_ids[i], self.input_ids[i] = get_data_ids(data_dir, False)
                 
-            for t in reversed(range(1, len(self.gt_ids[i]))):
-                j = random.randrange(1, t + 1)
-                self.gt_ids[i][t], self.gt_ids[i][j] = self.gt_ids[i][j], self.gt_ids[i][t]
-                self.input_ids[i][t], self.input_ids[i][j] = self.input_ids[i][j], self.input_ids[i][t]
-        
     def __getitem__(self, _):
         de_num = self.de_type_iterator % len(self.de_type)
+        
+        if self.de_iterator[de_num] == 0:
+            for t in reversed(range(1, len(self.gt_ids[de_num]))):
+                j = random.randrange(1, t + 1)
+                self.gt_ids[de_num][t], self.gt_ids[de_num][j] = self.gt_ids[de_num][j], self.gt_ids[de_num][t]
+                self.input_ids[de_num][t], self.input_ids[de_num][j] = self.input_ids[de_num][j], self.input_ids[de_num][t]
+        
         
         gt_id = self.gt_ids[de_num][self.de_iterator[de_num]]
         input_id = self.input_ids[de_num][self.de_iterator[de_num]]
         
+        # self.log_file.write('gt_id: ' + gt_id + '\n')
+
+        # print('before RGB: ', np.array(Image.open(gt_id)).shape)
+        # print('after RGB: ', np.array(Image.open(gt_id).convert('RGB')).shape)
+        
+        # assert Image.open(gt_id) == Image.open(gt_id).convert('RGB')
+        
         # get clean image
-        gt_img = crop_img(np.array(Image.open(gt_id).convert('RGB')), base=16)
+        gt_img = crop_img(np.array(Image.open(gt_id)), base=16)
         gt_name = gt_id.split("/")[-1].split('.')[0]
         
         # get degradation image
@@ -103,7 +115,8 @@ class TrainDataset(Dataset):
             sigma = int(self.de_type[de_num].split('_')[-1])
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
         else:
-            input_img = crop_img(np.array(Image.open(input_id).convert('RGB')), base=16)
+            # self.log_file.write('input_id: ' + input_id + '\n')
+            input_img = crop_img(np.array(Image.open(input_id)), base=16)
 
         degrad_patch_1, clean_patch_1 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
         degrad_patch_2, clean_patch_2 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
@@ -148,7 +161,7 @@ class TestDataset(Dataset):
         input_id = self.input_ids[idx]
         
         # get clean image
-        gt_img = crop_img(np.array(Image.open(gt_id).convert('RGB')), base=16)
+        gt_img = crop_img(np.array(Image.open(gt_id)), base=16)
         
         # get degradation image
         if 'denoising' in self.de_type:
@@ -156,7 +169,7 @@ class TestDataset(Dataset):
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
             input_name = gt_id.split("/")[-1].split('.')[0]
         else:
-            input_img = crop_img(np.array(Image.open(input_id).convert('RGB')), base=16)
+            input_img = crop_img(np.array(Image.open(input_id)), base=16)
             input_name = input_id.split("/")[-1].split('.')[0]
         
         if input_img.shape[0] > self.args.crop_test_imgs_size and input_img.shape[1] > self.args.crop_test_imgs_size:
