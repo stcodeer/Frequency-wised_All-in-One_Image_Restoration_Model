@@ -76,7 +76,8 @@ class TrainDataset(Dataset):
     def _init_ids(self):
         for i in range(len(self.de_type)):
             if 'denoising' in self.de_type[i]:
-                data_dir = 'data/' + self.de_type[i].split('_')[0] + '_train/'
+                length_sigma = len(self.de_type[i].split('_')[-1]) + 1
+                data_dir = 'data/' + self.de_type[i][0:-length_sigma] + '_train/'
                 self.gt_ids[i], self.input_ids[i] = get_data_ids(data_dir, True)
             else:
                 data_dir = 'data/' + self.de_type[i] + '_train/'
@@ -135,7 +136,8 @@ class TestDataset(Dataset):
 
     def _init_ids(self):
             if 'denoising' in self.de_type:
-                data_dir = 'data/' + self.de_type.split('_')[0] + '_test/'
+                length_sigma = len(self.de_type.split('_')[-1]) + 1
+                data_dir = 'data/' + self.de_type[0:-length_sigma] + '_test/'
                 self.gt_ids, self.input_ids = get_data_ids(data_dir, True)
             else:
                 data_dir = 'data/' + self.de_type + '_test/'
