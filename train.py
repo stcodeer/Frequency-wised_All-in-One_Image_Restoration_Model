@@ -6,7 +6,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+import numpy as np
+
 from utils.dataset_utils import TrainDataset, checkout
+from utils.visualization_utils import plot_image_grid
 from net.model import AirNet
 
 from option import options as opt
@@ -47,9 +50,21 @@ if __name__ == '__main__':
     # Start training
     print('Start training...')
     for epoch in range(opt.epochs):
+        i=0
         for ([clean_name, de_id], degrad_patch_1, degrad_patch_2, clean_patch_1, clean_patch_2) in tqdm(trainloader):
+            print("-1-1-1")
+            i=i+1
             degrad_patch_1, degrad_patch_2 = degrad_patch_1.cuda(), degrad_patch_2.cuda()
             clean_patch_1, clean_patch_2 = clean_patch_1.cuda(), clean_patch_2.cuda()
+            degrad_patch_11 = [np.array(degrad_patch_1[i].cpu()) for i in range(6)]
+            degrad_patch_22 = [np.array(degrad_patch_2[i].cpu()) for i in range(6)]
+            clean_patch_11 = [np.array(clean_patch_1[i].cpu()) for i in range(6)]
+            clean_patch_22 = [np.array(clean_patch_2[i].cpu()) for i in range(6)]
+            plot_image_grid(degrad_patch_11, save_path='output/%s_%s_%s.jpg'%(str(epoch), str(i), 'd1'))
+            plot_image_grid(degrad_patch_22, save_path='output/%s_%s_%s.jpg'%(str(epoch), str(i), 'd2'))
+            plot_image_grid(clean_patch_11, save_path='output/%s_%s_%s.jpg'%(str(epoch), str(i), 'c1'))
+            plot_image_grid(clean_patch_22, save_path='output/%s_%s_%s.jpg'%(str(epoch), str(i), 'c2'))
+            print("-2-2-2")
 
             optimizer.zero_grad()
 
