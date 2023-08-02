@@ -58,6 +58,14 @@ def _crop_patch(img_1, img_2, size):
 
     return patch_1, patch_2
 
+def naive_convert(x):
+    if x.shape[2] == 3:
+        return x
+    elif x.shape[2] == 4:
+        return x[:, :, 0:3]
+    else:
+        assert False, 'unwelcomed image type.'
+
 class TrainDataset(Dataset):
     def __init__(self, args):
         super(TrainDataset, self).__init__()
@@ -107,7 +115,7 @@ class TrainDataset(Dataset):
         # assert Image.open(gt_id) == Image.open(gt_id).convert('RGB')
         
         # get clean image
-        gt_img = crop_img(np.array(Image.open(gt_id)), base=16)
+        gt_img = naive_convert(crop_img(np.array(Image.open(gt_id)), base=16))
         gt_name = gt_id.split("/")[-1].split('.')[0]
         
         # get degradation image
@@ -116,8 +124,8 @@ class TrainDataset(Dataset):
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
         else:
             # self.log_file.write('input_id: ' + input_id + '\n')
-            input_img = crop_img(np.array(Image.open(input_id)), base=16)
-
+            input_img = naive_convert(crop_img(np.array(Image.open(input_id)), base=16))
+         
         degrad_patch_1, clean_patch_1 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
         degrad_patch_2, clean_patch_2 = random_augmentation(*_crop_patch(input_img, gt_img, size=self.args.patch_size))
         
@@ -161,7 +169,7 @@ class TestDataset(Dataset):
         input_id = self.input_ids[idx]
         
         # get clean image
-        gt_img = crop_img(np.array(Image.open(gt_id)), base=16)
+        gt_img = naive_convert(crop_img(np.array(Image.open(gt_id)), base=16))
         
         # get degradation image
         if 'denoising' in self.de_type:
@@ -169,7 +177,7 @@ class TestDataset(Dataset):
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
             input_name = gt_id.split("/")[-1].split('.')[0]
         else:
-            input_img = crop_img(np.array(Image.open(input_id)), base=16)
+            input_img = naive_convert(crop_img(np.array(Image.open(input_id)), base=16))
             input_name = input_id.split("/")[-1].split('.')[0]
         
         if input_img.shape[0] > self.args.crop_test_imgs_size and input_img.shape[1] > self.args.crop_test_imgs_size:
