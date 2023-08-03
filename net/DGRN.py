@@ -116,7 +116,12 @@ class DGRN(nn.Module):
 
         self.n_groups = 5
         n_blocks = 5
-        n_feats = 64
+        
+        if opt.encoder_type == 'ResNet':
+            n_feats = opt.encoder_dim // 4
+        elif opt.encoder_type == 'ViT':
+            n_feats = opt.encoder_dim
+            
         kernel_size = 3
 
         # head module
