@@ -11,8 +11,9 @@ parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of enc
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
-parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50', 'deraining', 'dehazing', 'deblurring'],
+parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are testing for.')
+# other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
