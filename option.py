@@ -7,7 +7,7 @@ parser.add_argument('--cuda', type=int, default=0)
 
 parser.add_argument('--epochs', type=int, default=1000, help='maximum number of epochs to train the total model.')
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
-parser.add_argument('--lr', type=float, default=1e-3, help='learning rate of encoder.')
+parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
@@ -36,10 +36,19 @@ options.batch_size = len(options.de_type)
 options.ckpt_path = options.output_path + 'ckpt/'
 
 if options.encoder_type == 'ResNet':
+    
     if options.encoder_dim == None:
         options.encoder_dim = 256
+        
+    if options.lr == None:
+        options.lr = 1e-3
+        
 elif options.encoder_type == 'ViT':
+    
     if options.encoder_dim == None:
         options.encoder_dim = 3
+        
+    if options.lr == None:
+        options.lr = 1e-4
 else:
     assert False, "wrong encoder type."
