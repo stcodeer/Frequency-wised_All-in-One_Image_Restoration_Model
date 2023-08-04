@@ -5,7 +5,7 @@ from torch import nn
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from net.frequency_decompose import frequency_decompose, frequency_decompose_dc
+from net.frequency_decompose import FrequencyDecompose
 
 # helpers
 
@@ -51,13 +51,13 @@ class Attention(nn.Module):
         
         if decompose_type.split('_')[-1] == 'bands':
             self.num_bands = int(decompose_type.split('_')[0])
-            self.decompose = frequency_decompose
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads))
+            self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, dim_head, dim_head)
+            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads)).cuda()
         
         elif decompose_type == 'DC':
             self.num_bands = 2
-            self.decompose = frequency_decompose_dc
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads))
+            self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, dim_head, dim_head)
+            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads)).cuda()
         
         self.dropout = nn.Dropout(dropout)
 
@@ -78,14 +78,11 @@ class Attention(nn.Module):
         
         # frequency decompose here
         if not self.num_bands == None:
-            print(attn)
-            attn_bands = self.decompose(attn, size=1./self.num_bands) # [num_bands, B, num_heads, N, N]
-            print(torch.sum(attn_bands, dim=0))
+            attn_bands = self.decompose(attn) # [num_bands, B, num_heads, N, N]
             
-            assert attn == torch.sum(attn_bands, dim=0), 'oops'
+            # assert torch.all(torch.abs(attn - torch.sum(attn_bands, dim=0)) < 1e-5), 'oops'
             
-            for i in range(self.num_bands):
-                attn_bands[i] = attn_bands[i] * self.lamb[i][None, :, None, None]
+            attn_bands = attn_bands * self.lamb[:, None, :, None, None]
             
             attn = attn + torch.sum(attn_bands, dim=0)
         
@@ -146,7 +143,6 @@ class ViTEncoder(nn.Module):
         )
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout,
