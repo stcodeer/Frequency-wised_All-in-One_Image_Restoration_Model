@@ -21,6 +21,9 @@ if __name__ == '__main__':
 
     train_log_file = open(opt.output_path + 'train.log', "w")
     opt_log_file = open(opt.output_path + 'options.log', "w")
+    if not opt.frequency_decompose_type == 'none':
+        lamb_q_log_file = open(opt.output_path + 'lamb_q.log', "w")
+        lamb_k_log_file = open(opt.output_path + 'lamb_k.log', "w")
     
     opt_log_file.write(f"|{'=' * 151}|")
     opt_log_file.write("\n")
@@ -112,5 +115,16 @@ if __name__ == '__main__':
             lr = 0.0001 * (0.5 ** ((epoch - opt.epochs_encoder) // 125))
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
+                
+                
+        if not opt.frequency_decompose_type == 'none':
+            for i in range(net.E.E.encoder_q.depth):
+                lamb_q_log_file.write(str(net.E.E.encoder_q.transformer.layers[i][0].fn.lamb.tolist()))
+            lamb_q_log_file.flush()
+            
+            for i in range(net.E.E.encoder_k.depth):
+                lamb_k_log_file.write(str(net.E.E.encoder_k.transformer.layers[i][0].fn.lamb.tolist()))
+            lamb_k_log_file.flush()
+
                 
     train_log_file.close()

@@ -125,6 +125,8 @@ class ViTEncoder(nn.Module):
         
         self.opt = opt
         
+        self.depth = depth
+        
         dim_head = dim // heads
         
         self.image_height, self.image_width = pair(image_size)
