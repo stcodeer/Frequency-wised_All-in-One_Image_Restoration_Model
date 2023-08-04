@@ -96,7 +96,7 @@ if __name__ == '__main__':
             train_log_file.flush()
 
         GPUS = 1
-        if epoch + 1 == opt.epochs:
+        if (epoch + 1) % 250 == 0 or epoch + 1 == opt.epochs:
             checkpoint = {
                 "net": net.state_dict(),
                 'optimizer': optimizer.state_dict(),
