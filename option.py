@@ -27,7 +27,7 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 # Network
 parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
-parser.add_argument('--frequency_decompose_type', type=str, default='5_bands', help='should be in [%_bands, DC].(only available for ViT Encoder)')
+parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT Encoder)')
 
 
 options = parser.parse_args()
@@ -52,4 +52,17 @@ elif options.encoder_type == 'ViT':
     if options.lr == None:
         options.lr = 3e-4
 else:
-    assert False, "wrong encoder type."
+    assert False, "invalid encoder type."
+    
+
+if options.frequency_decompose_type.split('_')[0].isdigit() and options.frequency_decompose_type.split('_')[1] == 'bands':
+    pass
+
+elif options.frequency_decompose_type == 'DC':
+    pass
+
+elif options.frequency_decompose_type == 'none':
+    pass
+
+else:
+    assert False, "invalid frequency decomposition type."
