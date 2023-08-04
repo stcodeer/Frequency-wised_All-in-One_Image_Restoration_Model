@@ -1,139 +1,129 @@
+# based on https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/vit.py
 import torch
-import torch.nn.functional as F
-
 from torch import nn
-from torch import Tensor
-from einops import rearrange
-from einops.layers.torch import Rearrange, Reduce
 
+from einops import rearrange, repeat
+from einops.layers.torch import Rearrange
 
-class PatchEmbedding(nn.Module):
-    def __init__(self, 
-                 in_channels: int = 3, 
-                 patch_size: int = 16, 
-                 emb_size: int = 768, 
-                 img_hsize: int = 448, 
-                 img_wsize: int = 704):
-        self.patch_size = patch_size
+# helpers
+
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
+
+# classes
+
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
         super().__init__()
-        self.projection = nn.Sequential(
-            # using a conv layer instead of a linear one -> performance gains
-            nn.Conv2d(in_channels, emb_size, kernel_size=patch_size, stride=patch_size),
-            Rearrange('b e (h) (w) -> b (h w) e'),
-        )
-        self.positions = nn.Parameter(torch.randn(img_hsize * img_wsize // patch_size // patch_size, emb_size))
-
-        
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.projection(x)
-        # add position embedding
-        x += self.positions
-        return x
-
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, emb_size: int = 768, num_heads: int = 8, dropout: float = 0):
-        super().__init__()
-        self.emb_size = emb_size
-        self.num_heads = num_heads
-        # fuse the queries, keys and values in one matrix
-        self.qkv = nn.Linear(emb_size, emb_size * 3)
-        self.att_drop = nn.Dropout(dropout)
-        self.projection = nn.Linear(emb_size, emb_size)
-
-    def forward(self, x: Tensor, mask: Tensor = None) -> Tensor:
-        # split keys, queries and values in num_heads
-        qkv = rearrange(self.qkv(x), "b n (h d qkv) -> (qkv) b h n d", h=self.num_heads, qkv=3)
-        queries, keys, values = qkv[0], qkv[1], qkv[2]
-        # sum up over the last axis
-        energy = torch.einsum('bhqd, bhkd -> bhqk', queries, keys)  # batch, num_heads, query_len, key_len
-        if mask is not None:
-            fill_value = torch.finfo(torch.float32).min
-            energy.mask_fill(~mask, fill_value)
-
-        scaling = self.emb_size ** (1 / 2)
-        att = F.softmax(energy, dim=-1) / scaling
-        att = self.att_drop(att)
-        # sum up over the third axis
-        out = torch.einsum('bhal, bhlv -> bhav ', att, values)
-        out = rearrange(out, "b h n d -> b n (h d)")
-        out = self.projection(out)
-        return out
-
-
-class ResidualAdd(nn.Module):
-    def __init__(self, fn):
-        super().__init__()
+        self.norm = nn.LayerNorm(dim)
         self.fn = fn
-        
     def forward(self, x, **kwargs):
-        res = x
-        x = self.fn(x, **kwargs)
-        x += res
+        return self.fn(self.norm(x), **kwargs)
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+
+        attn = self.attend(dots)
+        attn = self.dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
         return x
 
-
-class FeedForwardBlock(nn.Sequential):
-    def __init__(self, emb_size: int, expansion: int = 4, drop_p: float = 0.35):
-        super().__init__(
-            nn.Linear(emb_size, expansion * emb_size),
-            nn.GELU(),
-            nn.Dropout(drop_p),
-            nn.Linear(expansion * emb_size, emb_size),
-        )
-
-
-class TransformerEncoderBlock(nn.Sequential):
+class ViTEncoder(nn.Module):
     def __init__(self,
-                 emb_size: int = 768,
-                 drop_p: float = 0.35,
-                 forward_expansion: int = 4,
-                 forward_drop_p: float = 0.35,
-                 ** kwargs):
-        super().__init__(
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                MultiHeadAttention(emb_size, **kwargs),
-                nn.Dropout(drop_p)
-            )),
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(emb_size),
-                FeedForwardBlock(
-                    emb_size, expansion=forward_expansion, drop_p=forward_drop_p),
-                nn.Dropout(drop_p)
-            )
-    ))
-
-
-class TransformerEncoder(nn.Sequential):
-    def __init__(self, depth: int = 12, **kwargs):
-        super().__init__(*[TransformerEncoderBlock(**kwargs) for _ in range(depth)])
-
-
-class ViTEncoder(nn.Sequential):
-    def __init__(self, opt,
-                in_channels: int = 3,
-                depth: int = 12,
-                patch_size: int = 16,
-                **kwargs):
+                 opt,
+                 image_size = 128,
+                 patch_size = 16, 
+                 dim = 768, 
+                 depth = 12, 
+                 heads = 12, 
+                 mlp_dim = 3072, 
+                 channels = 3,
+                 dropout = 0.1, 
+                 emb_dropout = 0.1):
         super().__init__()
         
         self.opt = opt
         
-        self.img_hsize = opt.patch_size
-        self.img_wsize = opt.patch_size
+        dim_head = dim // heads
         
-        assert opt.patch_size == opt.crop_test_imgs_size
-        
-        dim = opt.encoder_dim * patch_size * patch_size
+        self.image_height, self.image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
 
-        layers = [
-            PatchEmbedding(in_channels, patch_size, dim, self.img_hsize, self.img_wsize),
-            TransformerEncoder(depth, emb_size=dim, **kwargs),
-        ]
-        
-        self.model = nn.Sequential(*layers)
+        assert self.image_height % patch_height == 0 and self.image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
+        num_patches = (self.image_height // patch_height) * (self.image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
+
+        self.to_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
+        )
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim)
+        )
+        
         self.avg = nn.AdaptiveAvgPool2d(1)
         
         self.mlp = nn.Sequential(
@@ -141,13 +131,24 @@ class ViTEncoder(nn.Sequential):
             nn.LeakyReLU(0.1, True),
             nn.Linear(opt.encoder_dim, opt.encoder_dim),
         )
-        
+
     def forward(self, x):
-        inter = self.model(x).reshape(-1, self.opt.encoder_dim, self.img_hsize, self.img_wsize)
+        x = self.to_patch_embedding(x)
+        
+        b, n, _ = x.shape
+
+        x += self.pos_embedding[:, :n]
+        
+        x = self.dropout(x)
+
+        x = self.transformer(x)
+        
+        x = self.mlp_head(x)
+        
+        inter = x.reshape(-1, self.opt.encoder_dim, self.image_height, self.image_width)
+        
         fea = self.avg(inter).squeeze(-1).squeeze(-1)
+        
         out = self.mlp(fea)
 
         return fea, out, inter
-
-
-

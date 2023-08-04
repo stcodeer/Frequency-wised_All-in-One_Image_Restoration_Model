@@ -24,9 +24,10 @@ parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop t
 # Path
 parser.add_argument('--output_path', type=str, default='output/tmp/', help='output and checkpoint save path')
 
-# Network Hyperparameters
-parser.add_argument('--encoder_type', type=str, default='ResNet', help="should be in '[ResNet, ViT]'")
+# Network
+parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
+parser.add_argument('--frequency_decompose_type', type=str, default='5_bands', help='should be in [%_bands, DC].(only available for ViT Encoder)')
 
 
 options = parser.parse_args()
@@ -49,6 +50,6 @@ elif options.encoder_type == 'ViT':
         options.encoder_dim = 3
         
     if options.lr == None:
-        options.lr = 1e-4
+        options.lr = 3e-4
 else:
     assert False, "wrong encoder type."
