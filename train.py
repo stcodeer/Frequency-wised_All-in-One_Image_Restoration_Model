@@ -119,11 +119,11 @@ if __name__ == '__main__':
                 
         if not opt.frequency_decompose_type == 'none':
             for i in range(net.E.E.encoder_q.depth):
-                lamb_q_log_file.write(str(net.E.E.encoder_q.transformer.layers[i][0].fn.lamb.tolist()))
+                lamb_q_log_file.write(str(net.E.E.encoder_q.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
             lamb_q_log_file.flush()
             
             for i in range(net.E.E.encoder_k.depth):
-                lamb_k_log_file.write(str(net.E.E.encoder_k.transformer.layers[i][0].fn.lamb.tolist()))
+                lamb_k_log_file.write(str(net.E.E.encoder_k.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
             lamb_k_log_file.flush()
 
                 
