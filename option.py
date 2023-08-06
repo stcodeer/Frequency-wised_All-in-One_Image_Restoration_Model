@@ -28,13 +28,14 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
 parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT Encoder)')
-
+parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT Encoder)')
 
 options = parser.parse_args()
 
 options.batch_size = len(options.de_type)
 
 options.ckpt_path = options.output_path + 'ckpt/'
+
 
 if options.encoder_type == 'ResNet':
     

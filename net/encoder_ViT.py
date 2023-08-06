@@ -37,7 +37,8 @@ class FeedForward(nn.Module):
 
 class Attention(nn.Module):
     def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.,
-                 decompose_type = 'none'):
+                 decompose_type = 'none',
+                 wised_batch = None):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
@@ -49,15 +50,19 @@ class Attention(nn.Module):
         
         self.num_bands = None
         
-        if decompose_type.split('_')[-1] == 'bands':
-            self.num_bands = int(decompose_type.split('_')[0])
-            self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, dim_head, dim_head)
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads)).cuda()
-        
-        elif decompose_type == 'DC':
-            self.num_bands = 2
-            self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, dim_head, dim_head)
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, heads)).cuda()
+        if not decompose_type == 'none':
+            if decompose_type.split('_')[-1] == 'bands':
+                self.num_bands = int(decompose_type.split('_')[0])
+                self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, dim_head, dim_head)
+            
+            elif decompose_type == 'DC':
+                self.num_bands = 2
+                self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, dim_head, dim_head)
+                
+            if wised_batch == None:
+                self.lamb = nn.Parameter(torch.zeros(self.num_bands, 1, heads)).cuda()
+            else:
+                self.lamb = nn.Parameter(torch.zeros(self.num_bands, wised_batch, heads)).cuda()
         
         self.dropout = nn.Dropout(dropout)
 
@@ -82,7 +87,7 @@ class Attention(nn.Module):
             
             # assert torch.all(torch.abs(attn - torch.sum(attn_bands, dim=0)) < 1e-5), 'oops'
             
-            attn_bands = attn_bands * self.lamb[:, None, :, None, None]
+            attn_bands = attn_bands * self.lamb[:, :, :, None, None]
             
             attn = attn + torch.sum(attn_bands, dim=0)
         
@@ -94,13 +99,15 @@ class Attention(nn.Module):
 
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.,
-                 decompose_type = 'none'):
+                 decompose_type = 'none',
+                 wised_batch = None):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout,
-                                       decompose_type=decompose_type)),
+                                       decompose_type = decompose_type,
+                                       wised_batch = wised_batch)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
     def forward(self, x):
@@ -148,7 +155,8 @@ class ViTEncoder(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout,
-                                       decompose_type=opt.frequency_decompose_type)
+                                       decompose_type = opt.frequency_decompose_type,
+                                       wised_batch = opt.batch_size if opt.batch_wise_decompose else None)
         
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
