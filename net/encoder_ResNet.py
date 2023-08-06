@@ -24,19 +24,19 @@ class ResNetEncoder(nn.Module):
     def __init__(self, opt):
         super(ResNetEncoder, self).__init__()
         
-        assert opt.encoder_dim == 256
+        self.dim = opt.encoder_dim
 
-        self.E_pre = ResBlock(in_feat=3, out_feat=64, stride=1)
+        self.E_pre = ResBlock(in_feat=3, out_feat=self.dim//4, stride=1)
         self.E = nn.Sequential(
-            ResBlock(in_feat=64, out_feat=128, stride=2),
-            ResBlock(in_feat=128, out_feat=256, stride=2),
+            ResBlock(in_feat=self.dim//4, out_feat=self.dim//2, stride=2),
+            ResBlock(in_feat=self.dim//2, out_feat=self.dim, stride=2),
             nn.AdaptiveAvgPool2d(1)
         )
 
         self.mlp = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(self.dim, self.dim),
             nn.LeakyReLU(0.1, True),
-            nn.Linear(256, 256),
+            nn.Linear(self.dim, self.dim),
         )
 
     def forward(self, x):
