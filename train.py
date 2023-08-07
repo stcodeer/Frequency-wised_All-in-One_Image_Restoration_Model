@@ -44,6 +44,9 @@ if __name__ == '__main__':
     # Network Construction
     net = AirNet(opt).cuda()
     net.train()
+    startpoint = 0
+    if startpoint > 0:
+        net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_' + str(startpoint) + '.pth', map_location=torch.device(opt.cuda)))
 
     # Optimizer and Loss
     optimizer = optim.Adam(net.parameters(), lr=opt.lr)
@@ -52,7 +55,7 @@ if __name__ == '__main__':
 
     # Start training
     print('Start training...')
-    for epoch in range(opt.epochs):
+    for epoch in range(startpoint, opt.epochs):
         for ([clean_name, de_id], degrad_patch_1, degrad_patch_2, clean_patch_1, clean_patch_2) in tqdm(trainloader):
 
             degrad_patch_1, degrad_patch_2 = degrad_patch_1.cuda(), degrad_patch_2.cuda()
@@ -96,7 +99,7 @@ if __name__ == '__main__':
             train_log_file.flush()
 
         GPUS = 1
-        if (epoch + 1) % 250 == 0 or epoch + 1 == opt.epochs:
+        if (epoch + 1) % 100 == 0 or epoch + 1 == opt.epochs:
             checkpoint = {
                 "net": net.state_dict(),
                 'optimizer': optimizer.state_dict(),
