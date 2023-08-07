@@ -60,9 +60,9 @@ class Attention(nn.Module):
                 self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, dim_head, dim_head)
                 
             if wised_batch == None:
-                self.lamb = nn.Parameter(torch.zeros(self.num_bands, 1, heads)).cuda()
+                self.lamb = nn.Parameter(torch.zeros(self.num_bands, 1, heads))
             else:
-                self.lamb = nn.Parameter(torch.zeros(self.num_bands, wised_batch, heads)).cuda()
+                self.lamb = nn.Parameter(torch.zeros(self.num_bands, wised_batch, heads))
         
         self.dropout = nn.Dropout(dropout)
 
