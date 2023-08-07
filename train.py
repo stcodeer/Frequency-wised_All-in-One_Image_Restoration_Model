@@ -55,60 +55,61 @@ if __name__ == '__main__':
 
     # Start training
     print('Start training...')
-    for epoch in range(startpoint, opt.epochs):
-        for ([clean_name, de_id], degrad_patch_1, degrad_patch_2, clean_patch_1, clean_patch_2) in tqdm(trainloader):
+    for epoch in range(opt.epochs):
+        if epoch >= startpoint:
+            for ([clean_name, de_id], degrad_patch_1, degrad_patch_2, clean_patch_1, clean_patch_2) in tqdm(trainloader):
 
-            degrad_patch_1, degrad_patch_2 = degrad_patch_1.cuda(), degrad_patch_2.cuda()
-            clean_patch_1, clean_patch_2 = clean_patch_1.cuda(), clean_patch_2.cuda()
+                degrad_patch_1, degrad_patch_2 = degrad_patch_1.cuda(), degrad_patch_2.cuda()
+                clean_patch_1, clean_patch_2 = clean_patch_1.cuda(), clean_patch_2.cuda()
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
+
+                if epoch < opt.epochs_encoder:
+                    _, output, target, _ = net.E(x_query=degrad_patch_1, x_key=degrad_patch_2)
+                    contrast_loss = CE(output, target)
+                    loss = contrast_loss
+                else:
+                    restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
+                    contrast_loss = CE(output, target)
+                    l1_loss = l1(restored, clean_patch_1)
+                    loss = l1_loss + 0.1 * contrast_loss
+
+                # backward
+                loss.backward()
+                optimizer.step()
 
             if epoch < opt.epochs_encoder:
-                _, output, target, _ = net.E(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                contrast_loss = CE(output, target)
-                loss = contrast_loss
+                print(
+                    'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
+                        epoch, contrast_loss.item(),
+                    ), '\r', end='')
+                train_log_file.write(
+                    'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
+                        epoch, contrast_loss.item(),
+                    ))
+                train_log_file.flush()
             else:
-                restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                contrast_loss = CE(output, target)
-                l1_loss = l1(restored, clean_patch_1)
-                loss = l1_loss + 0.1 * contrast_loss
+                print(
+                    'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
+                        epoch, l1_loss.item(), contrast_loss.item(),
+                    ), '\r', end='')
+                train_log_file.write(
+                    'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
+                        epoch, l1_loss.item(), contrast_loss.item(),
+                    ))
+                train_log_file.flush()
 
-            # backward
-            loss.backward()
-            optimizer.step()
-
-        if epoch < opt.epochs_encoder:
-            print(
-                'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
-                    epoch, contrast_loss.item(),
-                ), '\r', end='')
-            train_log_file.write(
-                'Epoch (%d)  Loss: contrast_loss:%0.4f\n' % (
-                    epoch, contrast_loss.item(),
-                ))
-            train_log_file.flush()
-        else:
-            print(
-                'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
-                    epoch, l1_loss.item(), contrast_loss.item(),
-                ), '\r', end='')
-            train_log_file.write(
-                'Epoch (%d)  Loss: l1_loss:%0.4f contrast_loss:%0.4f\n' % (
-                    epoch, l1_loss.item(), contrast_loss.item(),
-                ))
-            train_log_file.flush()
-
-        GPUS = 1
-        if (epoch + 1) % 100 == 0 or epoch + 1 == opt.epochs:
-            checkpoint = {
-                "net": net.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                "epoch": epoch
-            }
-            if GPUS == 1:
-                torch.save(net.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
-            else:
-                torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
+            GPUS = 1
+            if (epoch + 1) % 100 == 0 or epoch + 1 == opt.epochs:
+                checkpoint = {
+                    "net": net.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    "epoch": epoch
+                }
+                if GPUS == 1:
+                    torch.save(net.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
+                else:
+                    torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
 
         if epoch <= opt.epochs_encoder:
             lr = opt.lr * (0.1 ** (epoch // 60))
