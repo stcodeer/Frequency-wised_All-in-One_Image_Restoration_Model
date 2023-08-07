@@ -160,10 +160,10 @@ class ViTEncoder(nn.Module):
                                        decompose_type = opt.frequency_decompose_type,
                                        wised_batch = opt.batch_size if opt.batch_wise_decompose else None)
         
-        # self.mlp_head = nn.Sequential(
-        #     nn.LayerNorm(dim),
-        #     nn.Linear(dim, dim)
-        # )
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim)
+        )
         
         self.avg = nn.AdaptiveAvgPool2d(1)
         
@@ -184,7 +184,7 @@ class ViTEncoder(nn.Module):
 
         x = self.transformer(x)
         
-        # x = self.mlp_head(x)
+        x = self.mlp_head(x)
         
         inter = x.reshape(-1, self.opt.encoder_dim, self.image_height, self.image_width)
         
