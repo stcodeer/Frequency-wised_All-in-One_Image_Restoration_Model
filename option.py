@@ -9,9 +9,9 @@ parser.add_argument('--epochs', type=int, default=1000, help='maximum number of 
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
 
-parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing', 'deblurring'],
+parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing'],
                     help='which type of degradations are training for.')
-parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing', 'deblurring'],
+parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing'],
                     help='which type of degradations are testing for.')
 # other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
