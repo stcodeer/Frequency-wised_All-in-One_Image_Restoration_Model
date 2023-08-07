@@ -16,7 +16,7 @@ parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_b
 # other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
-parser.add_argument('--num_workers', type=int, default=0, help='number of workers.')
+parser.add_argument('--num_workers', type=int, default=8, help='number of workers.')
 
 parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
 parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop test images to smaller than given resolution.')
