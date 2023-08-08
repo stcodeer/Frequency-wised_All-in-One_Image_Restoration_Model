@@ -14,18 +14,18 @@ from net.model import AirNet
 
 from option import options as opt
 
-def test_by_task(net, task):
+def test_by_task(net, task, epochs):
     print('starting testing %s...'%(task))
-
-    checkout(opt.output_path)
-    output_path = opt.output_path + 'test_' + task + '/'
-    checkout(output_path)
-        
-    test_log_file = open(output_path + 'test.log', "w")
     
     if opt.save_imgs:
-        output_imgs_path = output_path + 'output_imgs/'
-        checkout(output_imgs_path)
+        checkout(opt.output_path)
+        
+        output_path = opt.output_path + 'epoch_%s_imgs/'%str(epochs)
+        checkout(output_path)
+        output_path = output_path + 'test_' + task + '/'
+        checkout(output_path)
+        
+        # test_log_file = open(output_path + 'test.log', "w")
     
     testset = TestDataset(opt, task)
     testloader = DataLoader(testset, batch_size=1, pin_memory=True, shuffle=False, num_workers=opt.num_workers)
@@ -43,12 +43,13 @@ def test_by_task(net, task):
             ssim.update(temp_ssim, N)
             
             if opt.save_imgs:
-                save_image_tensor(restored, output_imgs_path + img_name[0] + '.png')
+                save_image_tensor(restored, output_path + img_name[0] + '.png')
 
         print("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
-        test_log_file.write("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
-        test_log_file.close()
+        # test_log_file.write("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
+        # test_log_file.close()
 
+    return "PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg)
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)
@@ -58,7 +59,10 @@ if __name__ == '__main__':
     # Make network
     net = AirNet(opt).cuda()
     net.eval()
-    net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_' + str(opt.epochs) + '.pth', map_location=torch.device(opt.cuda)))
+    net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_%s.pth'%str(opt.epochs), map_location=torch.device(opt.cuda)))
+    
+    result_log_file = open(os.path.join(opt.output_path, 'epoch_%s_results.log'%str(opt.epochs)), "w")
     
     for task in opt.test_de_type:
-        test_by_task(net, task=task)
+        result = test_by_task(net, task=task, epochs=opt.epochs)
+        result_log_file.write(task + ': ' + ' ' * (25 - len(task)) + result + '\n')
