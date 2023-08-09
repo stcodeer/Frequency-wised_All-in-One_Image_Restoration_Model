@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 
 from utils.dataset_utils import TrainDataset, checkout
-from utils.visualization_utils import plot_image_grid
+from utils.visualization_utils import plot_image_grid, plot_loss_curve
 from net.model import AirNet
 
 from option import options as opt
@@ -132,3 +132,5 @@ if __name__ == '__main__':
 
                 
     train_log_file.close()
+    
+    plot_loss_curve(opt.output_path)
