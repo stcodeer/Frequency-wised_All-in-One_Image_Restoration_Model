@@ -59,7 +59,7 @@ def plot_image_grid(images_np, nrow=8, factor=1, interpolation='lanczos', plot=F
     return grid
 
 
-def plot_loss_curve(path, num_epochs=None, ylim=[4, 0.05], save_path=None):
+def plot_loss_curve(path, num_epochs=None, ylim=((0, 4), (0, 0.05)), save_path=None):
     file = open(os.path.join(path, 'train.log'), 'r')
     Lines = file.readlines()
     file.close()
@@ -91,13 +91,13 @@ def plot_loss_curve(path, num_epochs=None, ylim=[4, 0.05], save_path=None):
     ax1.set_xlim(0, num_epochs)
     ax1.set_xlabel('Epochs')
     
-    ax1.set_ylim(0, ylim[0])
+    ax1.set_ylim(ylim[0][0], ylim[0][1])
     ax1.set_ylabel('Contrast Loss')
     ax1.plot(range(0, num_epochs), contrast_loss[0: num_epochs], color=c[0], label='Contrast Loss', linewidth=4)
     
     ax2 = ax1.twinx()
     
-    ax2.set_ylim(0, ylim[1])
+    ax2.set_ylim(ylim[1][0], ylim[1][1])
     ax2.set_ylabel('L1 Loss')
     ax2.plot(range(first_epochs, num_epochs), l1_loss[first_epochs: num_epochs], color=c[1], label='L1 Loss', linewidth=4)
     
@@ -107,5 +107,36 @@ def plot_loss_curve(path, num_epochs=None, ylim=[4, 0.05], save_path=None):
     if save_path == None:
         save_path = os.path.join(path, 'loss_curve.png')
     plt.savefig(save_path)
+    # plt.show()
+    plt.close()
+    
+    
+def plot_curve(f, x_range=None, labels=None, xlabel=None, ylabel=None, ylim=(0, 40), figsize=(7, 6), save_path=None):
+    c = ['r', 'b', 'g', 'k', 'y', 'c', 'm']
+        
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    if x_range == None:
+        x_range = (0, len(f[0]))
+    ax.set_xlim(0, x_range[1])
+    ax.set_ylim(ylim[0], ylim[1])
+    
+    if not xlabel == None:
+        ax.set_xlabel(xlabel)
+
+    if not ylabel == None:
+        ax.set_ylabel(ylabel)
+    
+    for idx in range(len(f)):
+        if not labels == None:
+            ax.plot(range(*x_range), f[idx], color=c[idx], label=labels[idx], linewidth=4)
+        else:
+            ax.plot(range(*x_range), f[idx], color=c[idx], linewidth=4)
+    
+    plt.legend(loc="lower right")
+        
+    plt.grid()
+    if not save_path == None:
+        plt.savefig(save_path)
     # plt.show()
     plt.close()

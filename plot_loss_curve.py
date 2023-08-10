@@ -1,0 +1,8 @@
+from utils.visualization_utils import plot_loss_curve
+
+
+path = 'output/crop_test_imgs_size_128_de_type_denoising_15_denoising_25_denoising_50_deraining_test_de_type_denoising_bsd68_15_denoising_bsd68_25_denoising_bsd68_50_deraining'
+
+
+plot_loss_curve(path)
+
