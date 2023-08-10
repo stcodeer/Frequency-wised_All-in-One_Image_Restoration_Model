@@ -21,7 +21,7 @@ def get_image_grid(images_np, nrow=8):
     return torch_grid.numpy()
 
 
-def plot_image_grid(images_np, nrow=8, factor=1, interpolation='lanczos', plot=False, title='default', save_path='default'):
+def plot_image_grid(images_np, nrow=8, factor=1, dpi=100, interpolation='lanczos', plot=False, title='default', save_path='default'):
     """Draws images in a grid
     
     Args:
@@ -37,7 +37,7 @@ def plot_image_grid(images_np, nrow=8, factor=1, interpolation='lanczos', plot=F
 
     grid = get_image_grid(images_np, nrow)
     
-    plt.figure(figsize=(len(images_np) + factor, 12 + factor))
+    plt.figure(figsize=(len(images_np) + factor, 2 + factor))
     
     if images_np[0].shape[0] == 1:
         plt.imshow(grid[0], cmap='gray', interpolation=interpolation)
@@ -48,7 +48,7 @@ def plot_image_grid(images_np, nrow=8, factor=1, interpolation='lanczos', plot=F
         plt.title(title)
         
     if not save_path == 'default': 
-        plt.savefig(save_path)
+        plt.savefig(save_path, dpi=dpi)
         
     if plot:
         print("plotting...")
@@ -111,10 +111,12 @@ def plot_loss_curve(path, num_epochs=None, ylim=((0, 4), (0, 0.05)), save_path=N
     plt.close()
     
     
-def plot_curve(f, x_range=None, labels=None, xlabel=None, ylabel=None, ylim=(0, 40), figsize=(7, 6), save_path=None):
+def plot_curve(f, x_range=None, labels=None, xlabel=None, ylabel=None, ylim=(0, 40), figsize=(7, 6), scale='linear', save_path=None):
     c = ['r', 'b', 'g', 'k', 'y', 'c', 'm']
         
     fig, ax = plt.subplots(figsize=figsize)
+    
+    plt.yscale(scale)
     
     if x_range == None:
         x_range = (0, len(f[0]))
@@ -140,3 +142,13 @@ def plot_curve(f, x_range=None, labels=None, xlabel=None, ylabel=None, ylim=(0, 
         plt.savefig(save_path)
     # plt.show()
     plt.close()
+
+
+def rgb2gray(rgb):
+    if rgb.shape[2] == 1:
+        return rgb[:,:,0]
+
+    r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+    
+    return np.clip(gray, 0, 255)
