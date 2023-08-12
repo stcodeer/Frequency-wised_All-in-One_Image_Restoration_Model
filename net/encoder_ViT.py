@@ -121,16 +121,17 @@ class ViTEncoder(nn.Module):
                  opt,
                  image_size = 128,
                  patch_size = 16, 
-                 dim = 768, 
-                 depth = 12, 
-                 heads = 12, 
-                 mlp_dim = 3072, 
+                 depth = 12, # [12, 24, 32]
+                 heads = 12, # [12, 16, 16]
+                 mlp_dim = 3072, # [3072, 4096, 5120]
                  channels = 3,
                  dropout = 0.1, 
                  emb_dropout = 0.1):
         super().__init__()
         
-        dim = opt.encoder_dim * patch_size * patch_size
+        out_channels = opt.out_channels
+        
+        dim = out_channels * patch_size * patch_size
         
         self.opt = opt
         
@@ -162,7 +163,12 @@ class ViTEncoder(nn.Module):
         
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, dim)
+            nn.Linear(dim, dim // out_channels * opt.encoder_dim)
+        )
+        
+        self.norm = nn.Sequential(
+            nn.BatchNorm2d(opt.encoder_dim),
+            nn.LeakyReLU(0.1, True),
         )
         
         self.avg = nn.AdaptiveAvgPool2d(1)
@@ -187,6 +193,8 @@ class ViTEncoder(nn.Module):
         x = self.mlp_head(x)
         
         inter = x.reshape(-1, self.opt.encoder_dim, self.image_height, self.image_width)
+        
+        # inter = self.norm(inter)
         
         fea = self.avg(inter).squeeze(-1).squeeze(-1)
         

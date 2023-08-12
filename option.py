@@ -26,9 +26,11 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 
 # Network
 parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
-parser.add_argument('--encoder_dim', type=int, default=None, help='the dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
-parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT Encoder)')
-parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT Encoder)')
+parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
+parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
+parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT encoder)')
+parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT encoder)')
+# parser.add_argument('--enhanced_decompose', type=bool, default=False, help='use enhanced frequency decomposition module or origin one(only available for ViT encoder)')
 
 options = parser.parse_args()
 
