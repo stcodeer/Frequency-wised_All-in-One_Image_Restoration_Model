@@ -152,3 +152,33 @@ def rgb2gray(rgb):
     gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
     
     return np.clip(gray, 0, 255)
+
+
+def get_frequency_distribution(img):
+    
+    size = 0.2
+
+    ftimage = np.fft.fft2(img)
+    ftimage = abs(np.fft.fftshift(ftimage))
+
+    h, w = ftimage.shape
+
+    center = (int(w / 2), int(h / 2))
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+    
+    diag = center[0] # np.sqrt(center[0] ** 2 + center[1] ** 2)
+
+    tot_value = [0.] * int(1 / size)
+    
+    for idx, sz in enumerate(np.linspace(size, 1, int(1 / size))):
+        for y in range(h):
+            for x in range(w):
+                if sz == 1 and diag * (sz - size) <= dist_from_center[y][x] <= diag * sz:
+                    tot_value[idx] = tot_value[idx] + ftimage[y][x]
+                elif sz < 1 and diag * (sz - size) <= dist_from_center[y][x] < diag * sz:
+                    tot_value[idx] = tot_value[idx] + ftimage[y][x]
+                    
+    tot_value = tot_value / np.sum(tot_value)
+                    
+    return tot_value
