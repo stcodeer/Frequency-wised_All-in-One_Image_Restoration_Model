@@ -154,9 +154,7 @@ def rgb2gray(rgb):
     return np.clip(gray, 0, 255)
 
 
-def get_frequency_distribution(img):
-    
-    size = 0.2
+def get_frequency_distribution(img, size=0.2, norm=True):
 
     ftimage = np.fft.fft2(img)
     ftimage = abs(np.fft.fftshift(ftimage))
@@ -178,7 +176,37 @@ def get_frequency_distribution(img):
                     tot_value[idx] = tot_value[idx] + ftimage[y][x]
                 elif sz < 1 and diag * (sz - size) <= dist_from_center[y][x] < diag * sz:
                     tot_value[idx] = tot_value[idx] + ftimage[y][x]
-                    
-    tot_value = tot_value / np.sum(tot_value)
+    
+    if norm: 
+        tot_value = tot_value / np.sum(tot_value)
                     
     return tot_value
+    
+    
+def plot_scatter(x, y, labels=None, xlabel=None, ylabel=None, xlim=(0, 40), ylim=(0, 40), figsize=(7, 7), save_path=None):
+    c = ['r', 'b', 'g', 'k', 'y', 'c', 'm']
+        
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    ax.set_xlim(xlim[0], xlim[1])
+    ax.set_ylim(ylim[0], ylim[1])
+    
+    if not xlabel == None:
+        ax.set_xlabel(xlabel)
+
+    if not ylabel == None:
+        ax.set_ylabel(ylabel)
+    
+    for idx in range(len(labels)):
+        if not labels == None:
+            ax.scatter(x[idx], y[idx], s=15, color=c[idx], label=labels[idx])
+        else:
+            ax.scatter(x[idx], y[idx], s=15, color=c[idx])
+    
+    plt.legend(loc="upper right")
+        
+    plt.grid()
+    if not save_path == None:
+        plt.savefig(save_path)
+    # plt.show()
+    plt.close()
