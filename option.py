@@ -9,9 +9,9 @@ parser.add_argument('--epochs', type=int, default=1000, help='maximum number of 
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
 
-parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing'],
+parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
-parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing'],
+parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are testing for.')
 # other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
@@ -28,9 +28,12 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
 parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
+
 parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT encoder)')
 parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT encoder)')
 # parser.add_argument('--enhanced_decompose', type=bool, default=False, help='use enhanced frequency decomposition module or origin one(only available for ViT encoder)')
+
+parser.add_argument('--frequency_decompose_type_2', type=bool, default=False, help='(only available for ViT encoder)')
 
 options = parser.parse_args()
 
