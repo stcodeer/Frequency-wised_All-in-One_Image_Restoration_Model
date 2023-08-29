@@ -1,4 +1,5 @@
 import subprocess
+import os
 from tqdm import tqdm
 
 import torch
@@ -11,6 +12,7 @@ import numpy as np
 from utils.dataset_utils import TrainDataset, checkout
 from utils.visualization_utils import plot_image_grid, plot_loss_curve
 from net.model import AirNet
+from test import test_by_task
 
 from option import options as opt
 
@@ -21,9 +23,9 @@ if __name__ == '__main__':
 
     train_log_file = open(opt.output_path + 'train.log', "w")
     opt_log_file = open(opt.output_path + 'options.log', "w")
-    if not opt.frequency_decompose_type == 'none':
-        lamb_q_log_file = open(opt.output_path + 'lamb_q.log', "w")
-        lamb_k_log_file = open(opt.output_path + 'lamb_k.log', "w")
+    # if not opt.frequency_decompose_type == 'none':
+    #     lamb_q_log_file = open(opt.output_path + 'lamb_q.log', "w")
+    #     lamb_k_log_file = open(opt.output_path + 'lamb_k.log', "w")
     
     opt_log_file.write(f"|{'=' * 151}|")
     opt_log_file.write("\n")
@@ -110,6 +112,14 @@ if __name__ == '__main__':
                     torch.save(net.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
                 else:
                     torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
+                    
+                result_log_file = open(os.path.join(opt.output_path, 'epoch_%s_results.log'%str(epoch + 1)), "w")
+                
+                for task in opt.test_de_type:
+                    result = test_by_task(net, task=task, epochs=epoch + 1)
+                    result_log_file.write(task + ': ' + ' ' * (25 - len(task)) + result + '\n')
+                    
+                result_log_file.close()
 
         if epoch <= opt.epochs_encoder:
             lr = opt.lr * (0.1 ** (epoch // 60))
@@ -121,14 +131,14 @@ if __name__ == '__main__':
                 param_group['lr'] = lr
                 
                 
-        if not opt.frequency_decompose_type == 'none':
-            for i in range(net.E.E.encoder_q.depth):
-                lamb_q_log_file.write(str(net.E.E.encoder_q.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
-            lamb_q_log_file.flush()
+        # if not opt.frequency_decompose_type == 'none':
+        #     for i in range(net.E.E.encoder_q.depth):
+        #         lamb_q_log_file.write(str(net.E.E.encoder_q.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
+        #     lamb_q_log_file.flush()
             
-            for i in range(net.E.E.encoder_k.depth):
-                lamb_k_log_file.write(str(net.E.E.encoder_k.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
-            lamb_k_log_file.flush()
+        #     for i in range(net.E.E.encoder_k.depth):
+        #         lamb_k_log_file.write(str(net.E.E.encoder_k.transformer.layers[i][0].fn.lamb.tolist()) + '\n')
+        #     lamb_k_log_file.flush()
 
                 
     train_log_file.close()
