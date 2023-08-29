@@ -121,6 +121,7 @@ class DGRN(nn.Module):
             n_feats = opt.encoder_dim // 4
         elif opt.encoder_type == 'ViT':
             n_feats = opt.encoder_dim
+            # n_feats = opt.encoder_dim // 4
             
         kernel_size = 3
 
