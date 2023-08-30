@@ -5,7 +5,7 @@ from torch import nn
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from net.frequency_decompose import FrequencyDecompose
+from net.utils.frequency_decompose import FrequencyDecompose
 
 # helpers
 
@@ -194,7 +194,7 @@ class ViTEncoder(nn.Module):
         
         inter = x.reshape(-1, self.opt.encoder_dim, self.image_height, self.image_width)
         
-        # inter = self.norm(inter)
+        inter = self.norm(inter)
         
         fea = self.avg(inter).squeeze(-1).squeeze(-1)
         

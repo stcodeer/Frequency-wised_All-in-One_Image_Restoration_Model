@@ -1,9 +1,9 @@
 from torch import nn
 
-from net.DGRN import DGRN as Decoder
+from net.decoder_DGRN import DGRN as Decoder
 from net.encoder_ResNet import ResNetEncoder
 from net.encoder_ViT import ViTEncoder
-from net.moco import MoCo
+from net.utils.moco import MoCo
 
 
 class Encoder(nn.Module):
@@ -13,7 +13,8 @@ class Encoder(nn.Module):
         encoder = globals()[opt.encoder_type + 'Encoder']
         
         # Encoder
-        self.E = MoCo(opt=opt, base_encoder=encoder, dim=opt.encoder_dim, K=opt.batch_size * opt.encoder_dim)
+        # self.E = MoCo(opt=opt, base_encoder=encoder, dim=opt.encoder_dim, K=opt.batch_size * opt.encoder_dim)
+        self.E = MoCo(opt=opt, base_encoder=encoder, dim=opt.encoder_dim, K=opt.batch_size * 3)
 
     def forward(self, x_query, x_key):
         if self.training:

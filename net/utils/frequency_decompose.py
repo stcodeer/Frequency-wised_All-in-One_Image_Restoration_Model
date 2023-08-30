@@ -3,12 +3,13 @@ from torch import nn
 import math
 
 class FrequencyDecompose(nn.Module):
-    def __init__(self, type, size, h, w):
+    def __init__(self, type, size, h, w, inverse=True):
         super().__init__()
         self.type = type
         self.size = size
         self.h = h
         self.w = w
+        self.inverse = inverse
         
         assert size > 0 and size < 1, 'invalid frequency band width()'%(size)
         
@@ -50,7 +51,14 @@ class FrequencyDecompose(nn.Module):
             
             decomposed_fre_x = mask_now.repeat(B, C, 1, 1) * fre_x # [B, C, N, N]
             
-            decomposed_x.append(torch.fft.ifft2(torch.fft.ifftshift(decomposed_fre_x)).real.unsqueeze(0))
+            decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
+            
+            if self.inverse:
+                decomposed_fre_x = torch.fft.ifft2(decomposed_fre_x).real
+            else:
+                decomposed_fre_x = torch.abs(decomposed_fre_x)
+            
+            decomposed_x.append(decomposed_fre_x.unsqueeze(0))
         
         return torch.concat(decomposed_x, dim=0)
 
