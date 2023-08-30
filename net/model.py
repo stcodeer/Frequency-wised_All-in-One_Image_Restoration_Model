@@ -1,9 +1,9 @@
 from torch import nn
 
-from net.decoder_DGRN import DGRN as Decoder
-from net.encoder_ResNet import ResNetEncoder
-from net.encoder_ViT import ViTEncoder
-from net.utils.moco import MoCo
+from decoder_DGRN import DGRN as Decoder
+from encoder_ResNet import ResNetEncoder
+from encoder_ViT import ViTEncoder
+from utils.moco import MoCo
 
 
 class Encoder(nn.Module):
