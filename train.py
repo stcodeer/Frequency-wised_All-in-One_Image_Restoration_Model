@@ -121,11 +121,15 @@ if __name__ == '__main__':
                     
                 result_log_file = open(os.path.join(opt.output_path, 'epoch_%s_results.log'%str(epoch + 1)), "w")
                 
+                net.eval()
+                
                 for task in opt.test_de_type:
                     result = test_by_task(net, task=task, epochs=epoch + 1)
                     result_log_file.write(task + ': ' + ' ' * (25 - len(task)) + result + '\n')
                     
                 result_log_file.close()
+
+                net.train()
 
         if epoch <= opt.epochs_encoder:
             lr = opt.lr * (0.1 ** (epoch // 60))
