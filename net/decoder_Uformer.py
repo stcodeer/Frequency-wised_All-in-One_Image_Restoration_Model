@@ -101,6 +101,9 @@ class LinearProjection(nn.Module):
 
 class WindowAttention(nn.Module):
     def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+        
+        import warnings
+        warnings.filterwarnings('ignore')
 
         super().__init__()
         self.dim = dim
@@ -770,37 +773,38 @@ class Uformer(nn.Module):
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
     def forward(self, x, mask=None):
+        # B C H W
         # Input Projection
-        y = self.input_proj(x)
+        y = self.input_proj(x) # B H*W embed_dim
         y = self.pos_drop(y)
         #Encoder
         conv0 = self.encoderlayer_0(y,mask=mask)
-        pool0 = self.dowsample_0(conv0)
+        pool0 = self.dowsample_0(conv0) # B H/2*W/2 embed_dim*2
         conv1 = self.encoderlayer_1(pool0,mask=mask)
-        pool1 = self.dowsample_1(conv1)
+        pool1 = self.dowsample_1(conv1) # B H/4*W/4 embed_dim*4
         conv2 = self.encoderlayer_2(pool1,mask=mask)
-        pool2 = self.dowsample_2(conv2)
+        pool2 = self.dowsample_2(conv2) # B H/8*W/8 embed_dim*8
         conv3 = self.encoderlayer_3(pool2,mask=mask)
-        pool3 = self.dowsample_3(conv3)
+        pool3 = self.dowsample_3(conv3) # B H/16*W/16 embed_dim*16
 
         # Bottleneck
         conv4 = self.conv(pool3, mask=mask)
 
         #Decoder
-        up0 = self.upsample_0(conv4)
-        deconv0 = torch.cat([up0,conv3],-1)
+        up0 = self.upsample_0(conv4) # B H/8*W/8 embed_dim*8
+        deconv0 = torch.cat([up0,conv3],-1) # B H/8*W/8 embed_dim*16
         deconv0 = self.decoderlayer_0(deconv0,mask=mask)
         
         up1 = self.upsample_1(deconv0)
-        deconv1 = torch.cat([up1,conv2],-1)
+        deconv1 = torch.cat([up1,conv2],-1) # B H/4*W/4 embed_dim*8
         deconv1 = self.decoderlayer_1(deconv1,mask=mask)
 
         up2 = self.upsample_2(deconv1)
-        deconv2 = torch.cat([up2,conv1],-1)
+        deconv2 = torch.cat([up2,conv1],-1) # B H/2*W/2 embed_dim*4
         deconv2 = self.decoderlayer_2(deconv2,mask=mask)
 
         up3 = self.upsample_3(deconv2)
-        deconv3 = torch.cat([up3,conv0],-1)
+        deconv3 = torch.cat([up3,conv0],-1) # B H*W embed_dim*2
         deconv3 = self.decoderlayer_3(deconv3,mask=mask)
 
         # Output Projection
@@ -810,12 +814,18 @@ class Uformer(nn.Module):
 
 if __name__ == "__main__":
     input_size = 256
+    
     model_restoration = Uformer()
-    print(model_restoration)
+    # print(model_restoration)
+    
+    x = torch.zeros((4, 3, 128, 128))
+    x = model_restoration(x)
+    
+    print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
+    
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,
     #                                             print_per_layer_stat=True, verbose=True)
     # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
-    print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
     # print("number of GFLOPs: %.2f G"%(model_restoration.flops() / 1e9))
