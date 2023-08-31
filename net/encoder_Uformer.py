@@ -10,7 +10,7 @@ from einops import rearrange, repeat
 
 import math
 
-from utils.leff import LeFF, FastLeFF
+from .utils.leff import LeFF, FastLeFF
 
 class SepConv2d(torch.nn.Module):
     def __init__(self,
@@ -681,72 +681,6 @@ class Uformer(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
 
-        # Decoder
-        self.upsample_0 = upsample(embed_dim*16, embed_dim*8)
-        self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*16,
-                            output_dim=embed_dim*16,
-                            input_resolution=(img_size // (2 ** 3),
-                                                img_size // (2 ** 3)),
-                            depth=depths[5],
-                            num_heads=num_heads[5],
-                            win_size=win_size,
-                            mlp_ratio=self.mlp_ratio,
-                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                            drop=drop_rate, attn_drop=attn_drop_rate,
-                            drop_path=dec_dpr[:depths[5]],
-                            norm_layer=norm_layer,
-                            use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_1 = upsample(embed_dim*16, embed_dim*4)
-        self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*8,
-                            output_dim=embed_dim*8,
-                            input_resolution=(img_size // (2 ** 2),
-                                                img_size // (2 ** 2)),
-                            depth=depths[6],
-                            num_heads=num_heads[6],
-                            win_size=win_size,
-                            mlp_ratio=self.mlp_ratio,
-                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                            drop=drop_rate, attn_drop=attn_drop_rate,
-                            drop_path=dec_dpr[sum(depths[5:6]):sum(depths[5:7])],
-                            norm_layer=norm_layer,
-                            use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_2 = upsample(embed_dim*8, embed_dim*2)
-        self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
-                            output_dim=embed_dim*4,
-                            input_resolution=(img_size // 2,
-                                                img_size // 2),
-                            depth=depths[7],
-                            num_heads=num_heads[7],
-                            win_size=win_size,
-                            mlp_ratio=self.mlp_ratio,
-                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                            drop=drop_rate, attn_drop=attn_drop_rate,
-                            drop_path=dec_dpr[sum(depths[5:7]):sum(depths[5:8])],
-                            norm_layer=norm_layer,
-                            use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_3 = upsample(embed_dim*4, embed_dim)
-        self.decoderlayer_3 = BasicUformerLayer(dim=embed_dim*2,
-                            output_dim=embed_dim*2,
-                            input_resolution=(img_size,
-                                                img_size),
-                            depth=depths[8],
-                            num_heads=num_heads[8],
-                            win_size=win_size,
-                            mlp_ratio=self.mlp_ratio,
-                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                            drop=drop_rate, attn_drop=attn_drop_rate,
-                            drop_path=dec_dpr[sum(depths[5:8]):sum(depths[5:9])],
-                            norm_layer=norm_layer,
-                            use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            modulator=modulator,cross_modulator=cross_modulator)
-
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -786,34 +720,14 @@ class Uformer(nn.Module):
         # Bottleneck
         conv4 = self.conv(pool3, mask=mask)
 
-        #Decoder
-        up0 = self.upsample_0(conv4)
-        deconv0 = torch.cat([up0,conv3],-1)
-        deconv0 = self.decoderlayer_0(deconv0,mask=mask)
-        
-        up1 = self.upsample_1(deconv0)
-        deconv1 = torch.cat([up1,conv2],-1)
-        deconv1 = self.decoderlayer_1(deconv1,mask=mask)
-
-        up2 = self.upsample_2(deconv1)
-        deconv2 = torch.cat([up2,conv1],-1)
-        deconv2 = self.decoderlayer_2(deconv2,mask=mask)
-
-        up3 = self.upsample_3(deconv2)
-        deconv3 = torch.cat([up3,conv0],-1)
-        deconv3 = self.decoderlayer_3(deconv3,mask=mask)
-
         # Output Projection
-        y = self.output_proj(deconv3)
-        return x + y if self.in_chans ==3 else y
+        # y = self.output_proj(deconv3)
+        # return x + y if self.in_chans ==3 else y
 
 
 if __name__ == "__main__":
     input_size = 256
-    arch = Uformer
-    depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
-    model_restoration = Uformer(img_size=input_size, embed_dim=16,depths=depths,
-                 win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False)
+    model_restoration = Uformer()
     print(model_restoration)
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,

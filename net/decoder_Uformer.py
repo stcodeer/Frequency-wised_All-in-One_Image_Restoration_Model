@@ -10,7 +10,7 @@ from einops import rearrange, repeat
 
 import math
 
-from utils.leff import LeFF, FastLeFF
+from .utils.leff import LeFF, FastLeFF
 
 class SepConv2d(torch.nn.Module):
     def __init__(self,
@@ -810,10 +810,7 @@ class Uformer(nn.Module):
 
 if __name__ == "__main__":
     input_size = 256
-    arch = Uformer
-    depths=[2, 2, 2, 2, 2, 2, 2, 2, 2]
-    model_restoration = Uformer(img_size=input_size, embed_dim=16,depths=depths,
-                 win_size=8, mlp_ratio=4., token_projection='linear', token_mlp='leff', modulator=True, shift_flag=False)
+    model_restoration = Uformer()
     print(model_restoration)
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,

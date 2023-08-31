@@ -5,7 +5,7 @@ from torch import nn
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
-from utils.frequency_decompose import FrequencyDecompose
+from .utils.frequency_decompose import FrequencyDecompose
 
 # helpers
 
