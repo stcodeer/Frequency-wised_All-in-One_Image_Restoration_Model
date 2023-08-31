@@ -16,7 +16,7 @@ parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_b
 # other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
 parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of input.')
-parser.add_argument('--num_workers', type=int, default=8, help='number of workers.')
+parser.add_argument('--num_workers', type=int, default=16, help='number of workers.')
 
 parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
 parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop test images to smaller than given resolution.')
@@ -25,22 +25,29 @@ parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop t
 parser.add_argument('--output_path', type=str, default='output/tmp/', help='output and checkpoint save path')
 
 # Network
-parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT]')
-parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT).')
-parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
+parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT, Uformer]')
+parser.add_argument('--decoder_type', type=str, default='ResNet', help='should be in [ResNet, Uformer]')
+parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT, 256 when Uformer).')
 
+# Uformer encoder+decoder
+parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
+                    help='degradation embedding method, should be in [residual].(only available for Uformer encoder+decoder).')
+
+# ViT encoder
+parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
 parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT encoder)')
 parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT encoder)')
-# parser.add_argument('--enhanced_decompose', type=bool, default=False, help='use enhanced frequency decomposition module or origin one(only available for ViT encoder)')
-
 parser.add_argument('--frequency_decompose_type_2', type=bool, default=False, help='(only available for ViT encoder)')
 
 options = parser.parse_args()
 
+if options.de_type[0] == '4tasks':
+    options.de_type = ['denoising_15', 'denoising_25', 'denoising_50', 'deraining']
+    options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining']
+
 options.batch_size = len(options.de_type)
 
 options.ckpt_path = options.output_path + 'ckpt/'
-
 
 if options.encoder_type == 'ResNet':
     
@@ -57,6 +64,13 @@ elif options.encoder_type == 'ViT':
         
     if options.lr == None:
         options.lr = 3e-4
+elif options.encoder_type == 'Uformer':
+    
+    if options.encoder_dim == None:
+        options.encoder_dim = 256
+        
+    if options.lr == None:
+        options.lr = 2e-4
 else:
     assert False, "invalid encoder type."
     

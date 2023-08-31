@@ -1,9 +1,27 @@
 from torch import nn
 
-from .decoder_DGRN import DGRN as Decoder
+from .decoder_DGRN import DGRN as DGRNDecoder
+from .decoder_Uformer import UformerDecoder
+
 from .encoder_ResNet import ResNetEncoder
 from .encoder_ViT import ViTEncoder
+from .encoder_Uformer import UformerEncoder
+
 from .utils.moco import MoCo
+
+
+class Decoder(nn.Module):
+    def __init__(self, opt):
+        super(Decoder, self).__init__()
+        
+        decoder = globals()[opt.decoder_type + 'Decoder']
+        
+        self.R = decoder(opt)
+
+    def forward(self, x_query, inter):
+        restored = self.R(x_query, inter)
+
+        return restored
 
 
 class Encoder(nn.Module):

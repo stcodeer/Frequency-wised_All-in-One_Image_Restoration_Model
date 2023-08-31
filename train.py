@@ -2,6 +2,7 @@ import subprocess
 import os
 from tqdm import tqdm
 
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -18,6 +19,11 @@ from option import options as opt
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)
+    random.seed(1234)
+    np.random.seed(1234)
+    torch.manual_seed(1234)
+    torch.cuda.manual_seed_all(1234)
+
     checkout(opt.output_path)
     checkout(opt.ckpt_path)
 

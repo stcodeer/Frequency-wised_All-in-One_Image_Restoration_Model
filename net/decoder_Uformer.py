@@ -571,9 +571,9 @@ class BasicUformerLayer(nn.Module):
         return x
 
 
-class Uformer(nn.Module):
-    def __init__(self, img_size=128, in_chans=3, out_chans=3,
-                 embed_dim=32, depths=[1, 2, 8, 8, 2, 8, 8, 2, 1], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+class UformerDecoder(nn.Module):
+    def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
+                 embed_dim=56, depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -582,7 +582,7 @@ class Uformer(nn.Module):
                  cross_modulator=False, **kwargs):
         super().__init__()
         
-
+        self.opt = opt
         self.num_enc_layers = len(depths)//2
         self.num_dec_layers = len(depths)//2
         self.embed_dim = embed_dim
@@ -669,7 +669,22 @@ class Uformer(nn.Module):
         self.dowsample_3 = dowsample(embed_dim*8, embed_dim*16)
 
         # Bottleneck
-        self.conv = BasicUformerLayer(dim=embed_dim*16,
+        self.bottleneck_0 = BasicUformerLayer(dim=embed_dim*16,
+                            output_dim=embed_dim*16,
+                            input_resolution=(img_size // (2 ** 4),
+                                                img_size // (2 ** 4)),
+                            depth=depths[4],
+                            num_heads=num_heads[4],
+                            win_size=win_size,
+                            mlp_ratio=self.mlp_ratio,
+                            qkv_bias=qkv_bias, qk_scale=qk_scale,
+                            drop=drop_rate, attn_drop=attn_drop_rate,
+                            drop_path=conv_dpr,
+                            norm_layer=norm_layer,
+                            use_checkpoint=use_checkpoint,
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+        
+        self.bottleneck_1 = BasicUformerLayer(dim=embed_dim*16,
                             output_dim=embed_dim*16,
                             input_resolution=(img_size // (2 ** 4),
                                                 img_size // (2 ** 4)),
@@ -685,8 +700,8 @@ class Uformer(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
 
         # Decoder
-        self.upsample_0 = upsample(embed_dim*16, embed_dim*8)
-        self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*16,
+        self.upsample_3 = upsample(embed_dim*16, embed_dim*8)
+        self.decoderlayer_3 = BasicUformerLayer(dim=embed_dim*16,
                             output_dim=embed_dim*16,
                             input_resolution=(img_size // (2 ** 3),
                                                 img_size // (2 ** 3)),
@@ -701,8 +716,8 @@ class Uformer(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_1 = upsample(embed_dim*16, embed_dim*4)
-        self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*8,
+        self.upsample_2 = upsample(embed_dim*16, embed_dim*4)
+        self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
                             input_resolution=(img_size // (2 ** 2),
                                                 img_size // (2 ** 2)),
@@ -717,8 +732,8 @@ class Uformer(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_2 = upsample(embed_dim*8, embed_dim*2)
-        self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
+        self.upsample_1 = upsample(embed_dim*8, embed_dim*2)
+        self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
                             input_resolution=(img_size // 2,
                                                 img_size // 2),
@@ -733,8 +748,8 @@ class Uformer(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator)
-        self.upsample_3 = upsample(embed_dim*4, embed_dim)
-        self.decoderlayer_3 = BasicUformerLayer(dim=embed_dim*2,
+        self.upsample_0 = upsample(embed_dim*4, embed_dim)
+        self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
                             input_resolution=(img_size,
                                                 img_size),
@@ -749,7 +764,15 @@ class Uformer(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator)
+        
+        self.decoderlayer = [self.decoderlayer_0, self.decoderlayer_1, self.decoderlayer_2, self.decoderlayer_3]
+        self.upsample = [self.upsample_0, self.upsample_1, self.upsample_2, self.upsample_3]
 
+        # Degradation Representation Embedding
+        if 'residual' in opt.degradation_embedding_method:
+            self.degradation_embed = [nn.Linear((2 ** (i + 1)) * embed_dim, (2 ** i) * embed_dim).cuda()
+                              for i in range(self.num_enc_layers + 1)]
+                
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -772,12 +795,16 @@ class Uformer(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
-        # B C H W
+    def forward(self, x, inter, mask=None):
+        '''
+        :param x: feature map: (B, C, H, W)
+        :param inter: degradation representation: [(B, H*W, embed_dim), (B, H/2*W/2, embed_dim*2), (B, H/4*W/4, embed_dim*4), (B, H/8*W/8, embed_dim*8), (B, H/16*W/16, embed_dim*16)]
+        '''
         # Input Projection
         y = self.input_proj(x) # B H*W embed_dim
         y = self.pos_drop(y)
-        #Encoder
+        
+        # Encoder
         conv0 = self.encoderlayer_0(y,mask=mask)
         pool0 = self.dowsample_0(conv0) # B H/2*W/2 embed_dim*2
         conv1 = self.encoderlayer_1(pool0,mask=mask)
@@ -786,42 +813,56 @@ class Uformer(nn.Module):
         pool2 = self.dowsample_2(conv2) # B H/8*W/8 embed_dim*8
         conv3 = self.encoderlayer_3(pool2,mask=mask)
         pool3 = self.dowsample_3(conv3) # B H/16*W/16 embed_dim*16
-
+        
+        conv = [conv0, conv1, conv2, conv3]
+        
         # Bottleneck
-        conv4 = self.conv(pool3, mask=mask)
+        conv4 = self.bottleneck_0(pool3, mask=mask)
+        
+        if 'residual' in self.opt.degradation_embedding_method:
+            conv4 = self.degradation_embed[4](torch.cat([inter[4], conv4], -1))
+        
+        fea = conv4
+        fea = self.bottleneck_1(fea, mask=mask)
 
         #Decoder
-        up0 = self.upsample_0(conv4) # B H/8*W/8 embed_dim*8
-        deconv0 = torch.cat([up0,conv3],-1) # B H/8*W/8 embed_dim*16
-        deconv0 = self.decoderlayer_0(deconv0,mask=mask)
-        
-        up1 = self.upsample_1(deconv0)
-        deconv1 = torch.cat([up1,conv2],-1) # B H/4*W/4 embed_dim*8
-        deconv1 = self.decoderlayer_1(deconv1,mask=mask)
-
-        up2 = self.upsample_2(deconv1)
-        deconv2 = torch.cat([up2,conv1],-1) # B H/2*W/2 embed_dim*4
-        deconv2 = self.decoderlayer_2(deconv2,mask=mask)
-
-        up3 = self.upsample_3(deconv2)
-        deconv3 = torch.cat([up3,conv0],-1) # B H*W embed_dim*2
-        deconv3 = self.decoderlayer_3(deconv3,mask=mask)
+        for i in reversed(range(self.num_dec_layers)):
+            fea = self.upsample[i](fea)
+            
+            if 'residual' in self.opt.degradation_embedding_method:
+                conv[i] = self.degradation_embed[i](torch.cat([inter[i], conv[i]], -1))
+                
+            fea = torch.cat([fea, conv[i]], -1)
+            fea = self.decoderlayer[i](fea, mask=mask)
 
         # Output Projection
-        y = self.output_proj(deconv3)
+        y = self.output_proj(fea)
         return x + y if self.in_chans ==3 else y
 
 
 if __name__ == "__main__":
+    import os
+    import sys
+    p = os.path.join('.')
+    sys.path.append(os.path.abspath(p))
+    from option import options as opt
+    
+    opt.degradation_embedding_method = ['residual']
+    
     input_size = 256
     
-    model_restoration = Uformer()
+    model_restoration = UformerDecoder(opt)
     # print(model_restoration)
     
-    x = torch.zeros((4, 3, 128, 128))
-    x = model_restoration(x)
-    
     print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
+    
+    B = 4
+    C = 3
+    H = W = 128
+    embed_dim = 32
+    x = torch.zeros((B, C, H, W))
+    inter = [torch.zeros((B, H*W, embed_dim)), torch.zeros((B, H//2*W//2, embed_dim*2)), torch.zeros((B, H//4*W//4, embed_dim*4)), torch.zeros((B, H//8*W//8, embed_dim*8)), torch.zeros((B, H//16*W//16, embed_dim*16))]
+    restored = model_restoration(x, inter)
     
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,

@@ -572,8 +572,8 @@ class BasicUformerLayer(nn.Module):
 
 
 class Uformer(nn.Module):
-    def __init__(self, img_size=128, in_chans=3, out_chans=3,
-                 embed_dim=32, depths=[1, 2, 8, 8, 2, 8, 8, 2, 1], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+    def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
+                 embed_dim=56, depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -582,7 +582,7 @@ class Uformer(nn.Module):
                  cross_modulator=False, **kwargs):
         super().__init__()
         
-
+        self.opt = opt
         self.num_enc_layers = len(depths)//2
         self.num_dec_layers = len(depths)//2
         self.embed_dim = embed_dim
@@ -604,7 +604,6 @@ class Uformer(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -724,21 +723,70 @@ class Uformer(nn.Module):
         # Bottleneck
         conv4 = self.conv(pool3, mask=mask)
 
-        # Output Projection
-        # y = self.output_proj(deconv3)
-        # return x + y if self.in_chans ==3 else y
+        return conv4, [conv0, conv1, conv2, conv3, conv4]
+
+
+class UformerEncoder(nn.Module):
+    def __init__(self, opt, img_size=128, in_chans=3, out_chans=3, embed_dim=56):
+        super().__init__()
+        
+        self.opt = opt
+        self.img_size = img_size
+        
+        self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=out_chans, embed_dim=embed_dim)
+        
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(embed_dim * 16),
+            nn.Linear(embed_dim * 16, opt.encoder_dim * 16 * 16)
+        )
+        
+        self.norm = nn.Sequential(
+            nn.BatchNorm2d(opt.encoder_dim),
+            nn.LeakyReLU(0.1, True),
+        )
+        
+        self.avg = nn.AdaptiveAvgPool2d(1)
+        
+        self.mlp = nn.Sequential(
+            nn.Linear(opt.encoder_dim, opt.encoder_dim),
+            nn.LeakyReLU(0.1, True),
+            nn.Linear(opt.encoder_dim, opt.encoder_dim),
+        )
+        
+    def forward(self, x, mask=None):
+        # B C H W
+        x, inter = self.uformer(x, mask) # B H/16*W/16 embed_dim*16
+        
+        fea = self.mlp_head(x)
+        
+        fea = fea.reshape(fea.shape[0], self.opt.encoder_dim, self.img_size, self.img_size)
+        
+        fea = self.norm(fea)
+        
+        fea = self.avg(fea).squeeze(-1).squeeze(-1)
+        
+        out = self.mlp(fea) # B self.encoder_dim
+
+        return fea, out, inter
 
 
 if __name__ == "__main__":
+    import os
+    import sys
+    
+    p = os.path.join('.')
+    sys.path.append(os.path.abspath(p))
+    from option import options as opt
+    
     input_size = 256
     
-    model_restoration = Uformer()
+    model_restoration = UformerEncoder(opt)
     # print(model_restoration)
     
-    x = torch.zeros((4, 3, 128, 128))
-    x = model_restoration(x)
-    
     print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
+    
+    x = torch.zeros((4, 3, 128, 128))
+    fea, out, inter = model_restoration(x)
     
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,
