@@ -578,11 +578,15 @@ class UformerDecoder(nn.Module):
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
                  use_checkpoint=False, token_projection='linear', token_mlp='leff',
-                 dowsample=Downsample, upsample=Upsample, shift_flag=True, modulator=True, 
-                 cross_modulator=False, **kwargs):
+                 dowsample=Downsample, upsample=Upsample, shift_flag=True,
+                 **kwargs):
         super().__init__()
         
         self.opt = opt
+        
+        modulator = opt.learnable_modulator
+        cross_modulator = False
+        
         self.num_enc_layers = len(depths)//2
         self.num_dec_layers = len(depths)//2
         self.embed_dim = embed_dim
@@ -857,7 +861,7 @@ if __name__ == "__main__":
     B = 4
     C = 3
     H = W = 128
-    embed_dim = 32
+    embed_dim = 56
     x = torch.zeros((B, C, H, W))
     inter = [torch.zeros((B, H*W, embed_dim)), torch.zeros((B, H//2*W//2, embed_dim*2)), torch.zeros((B, H//4*W//4, embed_dim*4)), torch.zeros((B, H//8*W//8, embed_dim*8)), torch.zeros((B, H//16*W//16, embed_dim*16))]
     restored = model_restoration(x, inter)

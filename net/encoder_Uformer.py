@@ -578,11 +578,15 @@ class Uformer(nn.Module):
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
                  use_checkpoint=False, token_projection='linear', token_mlp='leff',
-                 dowsample=Downsample, upsample=Upsample, shift_flag=True, modulator=True, 
-                 cross_modulator=False, **kwargs):
+                 dowsample=Downsample, upsample=Upsample, shift_flag=True,
+                 **kwargs):
         super().__init__()
         
         self.opt = opt
+        
+        modulator = False
+        cross_modulator = False
+        
         self.num_enc_layers = len(depths)//2
         self.num_dec_layers = len(depths)//2
         self.embed_dim = embed_dim
