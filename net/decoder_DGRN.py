@@ -156,3 +156,32 @@ class DGRN(nn.Module):
         x = self.tail(res)
 
         return x
+
+
+if __name__ == "__main__":
+    import os
+    import sys
+    p = os.path.join('.')
+    sys.path.append(os.path.abspath(p))
+    from option import options as opt
+    import torch
+    
+    opt.degradation_embedding_method = ['residual']
+    
+    model_restoration = DGRN(opt)
+    # print(model_restoration)
+    
+    print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
+    
+    B = 4
+    H = W = 128
+    x = torch.zeros((B, 3, H, W))
+    inter = torch.zeros((B, 64, H, W))
+    restored = model_restoration(x, inter)
+    
+    # from ptflops import get_model_complexity_info
+    # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,
+    #                                             print_per_layer_stat=True, verbose=True)
+    # print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    # print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+    # print("number of GFLOPs: %.2f G"%(model_restoration.flops() / 1e9))

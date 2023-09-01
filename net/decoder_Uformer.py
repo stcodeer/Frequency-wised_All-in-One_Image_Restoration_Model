@@ -849,8 +849,6 @@ if __name__ == "__main__":
     
     opt.degradation_embedding_method = ['residual']
     
-    input_size = 256
-    
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
     

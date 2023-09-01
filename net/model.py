@@ -1,6 +1,6 @@
 from torch import nn
 
-from .decoder_DGRN import DGRN as DGRNDecoder
+from .decoder_DGRN import DGRN as ResNetDecoder
 from .decoder_Uformer import UformerDecoder
 
 from .encoder_ResNet import ResNetEncoder

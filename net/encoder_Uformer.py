@@ -778,8 +778,6 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    input_size = 256
-    
     model_restoration = UformerEncoder(opt)
     # print(model_restoration)
     
