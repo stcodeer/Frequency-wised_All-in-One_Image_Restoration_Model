@@ -11,6 +11,7 @@ from einops import rearrange, repeat
 import math
 
 from .utils.leff import LeFF, FastLeFF
+from .utils.self_modulated_layernorm import SelfModulatedLayerNorm
 
 class SepConv2d(torch.nn.Module):
     def __init__(self,
@@ -382,8 +383,13 @@ class LeWinTransformerBlock(nn.Module):
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
                  modulator=False,cross_modulator=False,
-                 degradation_modulator=False, degradation_dim=-1):
+                 degradation_dim=-1,
+                 degradation_modulator=False,
+                 degradation_self_modulator=False):
         super().__init__()
+        
+        self.degradation_self_modulator = degradation_self_modulator
+        
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -416,14 +422,23 @@ class LeWinTransformerBlock(nn.Module):
         else:
             self.cross_modulator = None
 
-        self.norm1 = norm_layer(dim)
+        if degradation_self_modulator:
+            self.norm1 = SelfModulatedLayerNorm(dim, degradation_dim)
+        else:
+            self.norm1 = norm_layer(dim)
+            
         self.attn = WindowAttention(
             dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
             token_projection=token_projection)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim)
+
+        if degradation_self_modulator:
+            self.norm2 = SelfModulatedLayerNorm(dim, degradation_dim)
+        else:
+            self.norm2 = norm_layer(dim)
+            
         mlp_hidden_dim = int(dim * mlp_ratio)
         if token_mlp in ['ffn','mlp']:
             self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,act_layer=act_layer, drop=drop) 
@@ -487,7 +502,12 @@ class LeWinTransformerBlock(nn.Module):
             x = shortcut + x_cross
     
         shortcut = x
-        x = self.norm1(x)
+        
+        if self.degradation_self_modulator:
+            x = self.norm1(x, inter)
+        else:
+            x = self.norm1(x)
+
         x = x.view(B, H, W, C)
 
         # cyclic shift
@@ -537,7 +557,13 @@ class LeWinTransformerBlock(nn.Module):
 
         # FFN
         x = shortcut + self.drop_path(x)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        
+        if self.degradation_self_modulator:
+            norm = self.norm2(x, inter)
+        else:
+            norm = self.norm2(x)
+            
+        x = x + self.drop_path(self.mlp(norm))
         del attn_mask
         return x
 
@@ -550,7 +576,9 @@ class BasicUformerLayer(nn.Module):
                  drop_path=0., norm_layer=nn.LayerNorm, use_checkpoint=False,
                  token_projection='linear',token_mlp='ffn', shift_flag=True,
                  modulator=False,cross_modulator=False,
-                 degradation_modulator=False, degradation_dim=-1):
+                 degradation_dim=-1,
+                 degradation_modulator=False,
+                 degradation_self_modulator=False):
 
         super().__init__()
         self.dim = dim
@@ -569,7 +597,9 @@ class BasicUformerLayer(nn.Module):
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
-                                    degradation_modulator=degradation_modulator, degradation_dim=degradation_dim)
+                                    degradation_dim=degradation_dim,
+                                    degradation_modulator=degradation_modulator,
+                                    degradation_self_modulator=degradation_self_modulator)
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
@@ -582,7 +612,9 @@ class BasicUformerLayer(nn.Module):
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
-                                    degradation_modulator=degradation_modulator, degradation_dim=degradation_dim)
+                                    degradation_dim=degradation_dim,
+                                    degradation_modulator=degradation_modulator,
+                                    degradation_self_modulator=degradation_self_modulator)
             for i in range(depth)])
 
     def extra_repr(self) -> str:
@@ -638,6 +670,7 @@ class UformerDecoder(nn.Module):
                               for i in range(self.num_enc_layers + 1)]
             
         degradation_modulator = True if 'modulator' in opt.degradation_embedding_method else False
+        degradation_self_modulator = True if 'self_modulator' in opt.degradation_embedding_method else False
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
@@ -736,7 +769,9 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
-                            degradation_modulator=degradation_modulator, degradation_dim=embed_dim*16)
+                            degradation_dim=embed_dim*16,
+                            degradation_modulator=degradation_modulator,
+                            degradation_self_modulator=degradation_self_modulator)
 
         # Decoder
         self.upsample_3 = upsample(embed_dim*16, embed_dim*8)
@@ -755,7 +790,9 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
-                            degradation_modulator=degradation_modulator, degradation_dim=embed_dim*8)
+                            degradation_dim=embed_dim*8,
+                            degradation_modulator=degradation_modulator,
+                            degradation_self_modulator=degradation_self_modulator)
         self.upsample_2 = upsample(embed_dim*16, embed_dim*4)
         self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
@@ -772,7 +809,9 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
-                            degradation_modulator=degradation_modulator, degradation_dim=embed_dim*4)
+                            degradation_dim=embed_dim*4,
+                            degradation_modulator=degradation_modulator,
+                            degradation_self_modulator=degradation_self_modulator)
         self.upsample_1 = upsample(embed_dim*8, embed_dim*2)
         self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
@@ -789,7 +828,9 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
-                            degradation_modulator=degradation_modulator, degradation_dim=embed_dim*2)
+                            degradation_dim=embed_dim*2,
+                            degradation_modulator=degradation_modulator,
+                            degradation_self_modulator=degradation_self_modulator)
         self.upsample_0 = upsample(embed_dim*4, embed_dim)
         self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
@@ -806,7 +847,9 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
-                            degradation_modulator=degradation_modulator, degradation_dim=embed_dim)
+                            degradation_dim=embed_dim,
+                            degradation_modulator=degradation_modulator,
+                            degradation_self_modulator=degradation_self_modulator)
         
         self.decoderlayer = [self.decoderlayer_0, self.decoderlayer_1, self.decoderlayer_2, self.decoderlayer_3]
         self.upsample = [self.upsample_0, self.upsample_1, self.upsample_2, self.upsample_3]
@@ -819,8 +862,9 @@ class UformerDecoder(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+            if m.elementwise_affine == True:
+                nn.init.constant_(m.bias, 0)
+                nn.init.constant_(m.weight, 1.0)
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -885,7 +929,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['modulator']
+    opt.degradation_embedding_method = ['self_modulator']
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
