@@ -20,14 +20,14 @@ parser.add_argument('--patch_size', type=int, default=128, help='patcphsize of i
 parser.add_argument('--num_workers', type=int, default=16, help='number of workers.')
 
 parser.add_argument('--save_imgs', type=bool, default=False, help='whether or not to save output images.')
-parser.add_argument('--crop_test_imgs_size', type=int, default=512, help='crop test images to smaller than given resolution.')
+parser.add_argument('--crop_test_imgs_size', type=int, default=128, help='crop test images to smaller than given resolution.')
 
 # Path
 parser.add_argument('--output_path', type=str, default='output/tmp/', help='output and checkpoint save path')
 
 # Network
-parser.add_argument('--encoder_type', type=str, default='ResNet', help='should be in [ResNet, ViT, Uformer]')
-parser.add_argument('--decoder_type', type=str, default='ResNet', help='should be in [ResNet, Uformer]')
+parser.add_argument('--encoder_type', type=str, default='Uformer', help='should be in [ResNet, ViT, Uformer]')
+parser.add_argument('--decoder_type', type=str, default='Uformer', help='should be in [ResNet, Uformer]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT, 256 when Uformer).')
 
 # Uformer encoder+decoder
