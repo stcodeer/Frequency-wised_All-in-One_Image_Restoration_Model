@@ -3,6 +3,8 @@ import torch.nn as nn
 import math
 from einops import rearrange
 
+from .deform_conv import DCN_layer
+
 class FastLeFF(nn.Module):
     
     def __init__(self, dim=32, hidden_dim=128, act_layer=nn.GELU,drop = 0.):
@@ -67,18 +69,27 @@ class eca_layer_1d(nn.Module):
         return x * y.expand_as(x)
 
 class LeFF(nn.Module):
-    def __init__(self, dim=32, hidden_dim=128, act_layer=nn.GELU,drop = 0., use_eca=False):
+    def __init__(self, dim=32, hidden_dim=128, act_layer=nn.GELU,drop = 0., use_eca=False, degradation_dim=-1, deform_conv=False):
         super().__init__()
+        
+        self.deform_conv = deform_conv
+        
         self.linear1 = nn.Sequential(nn.Linear(dim, hidden_dim),
                                 act_layer())
-        self.dwconv = nn.Sequential(nn.Conv2d(hidden_dim,hidden_dim,groups=hidden_dim,kernel_size=3,stride=1,padding=1),
-                        act_layer())
+        if deform_conv:
+            self.linear_inter = nn.Sequential(nn.Linear(degradation_dim, hidden_dim),
+                                act_layer())
+            self.conv = nn.Sequential(DCN_layer(hidden_dim, hidden_dim, kernel_size=3, padding=1, bias=False),
+                            act_layer())
+        else:
+            self.conv = nn.Sequential(nn.Conv2d(hidden_dim,hidden_dim,groups=hidden_dim,kernel_size=3,stride=1,padding=1),
+                            act_layer())
+            
         self.linear2 = nn.Sequential(nn.Linear(hidden_dim, dim))
-        self.dim = dim
-        self.hidden_dim = hidden_dim
+        
         self.eca = eca_layer_1d(dim) if use_eca else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, inter=None):
         # bs x hw x c
         bs, hw, c = x.size()
         hh = int(math.sqrt(hw))
@@ -89,7 +100,13 @@ class LeFF(nn.Module):
         x = rearrange(x, ' b (h w) (c) -> b c h w ', h = hh, w = hh)
         # bs,hidden_dim,32x32
 
-        x = self.dwconv(x)
+        if self.deform_conv:
+            inter = self.linear_inter(inter)
+            inter = rearrange(inter, ' b (h w) (c) -> b c h w ', h = hh, w = hh)
+            x = self.conv[0](x, inter)
+            x = self.conv[1](x)
+        else:
+            x = self.conv(x)
 
         # flaten
         x = rearrange(x, ' b c h w -> b (h w) c', h = hh, w = hh)

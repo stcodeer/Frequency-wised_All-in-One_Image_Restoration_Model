@@ -384,11 +384,10 @@ class LeWinTransformerBlock(nn.Module):
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
                  modulator=False,cross_modulator=False,
                  degradation_dim=-1,
-                 degradation_modulator=False,
-                 degradation_self_modulator=False):
+                 degradation_embedding_method=[]):
         super().__init__()
         
-        self.degradation_self_modulator = degradation_self_modulator
+        self.degradation_embedding_method = degradation_embedding_method
         
         self.dim = dim
         self.input_resolution = input_resolution
@@ -407,7 +406,7 @@ class LeWinTransformerBlock(nn.Module):
         else:
             self.modulator = None
             
-        if degradation_modulator:
+        if 'modulator' in degradation_embedding_method:
             kernel_size = 1
             self.degradation_modulator = Downsample(degradation_dim, dim, kernel_size=kernel_size, stride=(input_resolution[0]//win_size, input_resolution[1]//win_size), padding=(kernel_size-1)//2)
             self.degradation_modulator_embed = nn.Linear(2 * dim, dim)#.cuda()
@@ -422,7 +421,7 @@ class LeWinTransformerBlock(nn.Module):
         else:
             self.cross_modulator = None
 
-        if degradation_self_modulator:
+        if 'self_modulator' in degradation_embedding_method:
             self.norm1 = SelfModulatedLayerNorm(dim, degradation_dim)
         else:
             self.norm1 = norm_layer(dim)
@@ -434,7 +433,7 @@ class LeWinTransformerBlock(nn.Module):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        if degradation_self_modulator:
+        if 'self_modulator' in degradation_embedding_method:
             self.norm2 = SelfModulatedLayerNorm(dim, degradation_dim)
         else:
             self.norm2 = norm_layer(dim)
@@ -443,7 +442,10 @@ class LeWinTransformerBlock(nn.Module):
         if token_mlp in ['ffn','mlp']:
             self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,act_layer=act_layer, drop=drop) 
         elif token_mlp=='leff':
-            self.mlp =  LeFF(dim,mlp_hidden_dim,act_layer=act_layer, drop=drop)
+            if 'deform_conv' in degradation_embedding_method:
+                self.mlp =  LeFF(dim, dim, act_layer=act_layer, drop=drop, degradation_dim=degradation_dim, deform_conv=True)
+            else:
+                self.mlp =  LeFF(dim,mlp_hidden_dim,act_layer=act_layer, drop=drop)
         
         elif token_mlp=='fastleff':
             self.mlp =  FastLeFF(dim,mlp_hidden_dim,act_layer=act_layer, drop=drop)    
@@ -503,7 +505,7 @@ class LeWinTransformerBlock(nn.Module):
     
         shortcut = x
         
-        if self.degradation_self_modulator:
+        if 'self_modulator' in self.degradation_embedding_method:
             x = self.norm1(x, inter)
         else:
             x = self.norm1(x)
@@ -526,8 +528,7 @@ class LeWinTransformerBlock(nn.Module):
         else:
             wmsa_in = x_windows
 
-        # degradation embedding method: modulator
-        if self.degradation_modulator is not None:
+        if 'modulator' in self.degradation_embedding_method:
             win_num = self.input_resolution[0] // self.win_size * self.input_resolution[1] // self.win_size
             
             inter = self.degradation_modulator(inter)
@@ -558,12 +559,17 @@ class LeWinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
         
-        if self.degradation_self_modulator:
+        if 'self_modulator' in self.degradation_embedding_method:
             norm = self.norm2(x, inter)
         else:
             norm = self.norm2(x)
-            
-        x = x + self.drop_path(self.mlp(norm))
+        
+        if 'deform_conv' in self.degradation_embedding_method:
+            y = self.mlp(norm, inter)
+        else:
+            y = self.mlp(norm)
+        
+        x = x + self.drop_path(y)
         del attn_mask
         return x
 
@@ -577,8 +583,7 @@ class BasicUformerLayer(nn.Module):
                  token_projection='linear',token_mlp='ffn', shift_flag=True,
                  modulator=False,cross_modulator=False,
                  degradation_dim=-1,
-                 degradation_modulator=False,
-                 degradation_self_modulator=False):
+                 degradation_embedding_method=[]):
 
         super().__init__()
         self.dim = dim
@@ -598,8 +603,7 @@ class BasicUformerLayer(nn.Module):
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
                                     degradation_dim=degradation_dim,
-                                    degradation_modulator=degradation_modulator,
-                                    degradation_self_modulator=degradation_self_modulator)
+                                    degradation_embedding_method=degradation_embedding_method)
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
@@ -613,8 +617,7 @@ class BasicUformerLayer(nn.Module):
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
                                     degradation_dim=degradation_dim,
-                                    degradation_modulator=degradation_modulator,
-                                    degradation_self_modulator=degradation_self_modulator)
+                                    degradation_embedding_method=degradation_embedding_method)
             for i in range(depth)])
 
     def extra_repr(self) -> str:
@@ -668,9 +671,6 @@ class UformerDecoder(nn.Module):
         if 'residual' in opt.degradation_embedding_method:
             self.degradation_embed = [nn.Linear((2 ** (i + 1)) * embed_dim, (2 ** i) * embed_dim)# .cuda()
                               for i in range(self.num_enc_layers + 1)]
-            
-        degradation_modulator = True if 'modulator' in opt.degradation_embedding_method else False
-        degradation_self_modulator = True if 'self_modulator' in opt.degradation_embedding_method else False
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
@@ -770,8 +770,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim*16,
-                            degradation_modulator=degradation_modulator,
-                            degradation_self_modulator=degradation_self_modulator)
+                            degradation_embedding_method=opt.degradation_embedding_method)
 
         # Decoder
         self.upsample_3 = upsample(embed_dim*16, embed_dim*8)
@@ -791,8 +790,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim*8,
-                            degradation_modulator=degradation_modulator,
-                            degradation_self_modulator=degradation_self_modulator)
+                            degradation_embedding_method=opt.degradation_embedding_method)
         self.upsample_2 = upsample(embed_dim*16, embed_dim*4)
         self.decoderlayer_2 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
@@ -810,8 +808,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim*4,
-                            degradation_modulator=degradation_modulator,
-                            degradation_self_modulator=degradation_self_modulator)
+                            degradation_embedding_method=opt.degradation_embedding_method)
         self.upsample_1 = upsample(embed_dim*8, embed_dim*2)
         self.decoderlayer_1 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
@@ -829,8 +826,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim*2,
-                            degradation_modulator=degradation_modulator,
-                            degradation_self_modulator=degradation_self_modulator)
+                            degradation_embedding_method=opt.degradation_embedding_method)
         self.upsample_0 = upsample(embed_dim*4, embed_dim)
         self.decoderlayer_0 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
@@ -848,8 +844,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim,
-                            degradation_modulator=degradation_modulator,
-                            degradation_self_modulator=degradation_self_modulator)
+                            degradation_embedding_method=opt.degradation_embedding_method)
         
         self.decoderlayer = [self.decoderlayer_0, self.decoderlayer_1, self.decoderlayer_2, self.decoderlayer_3]
         self.upsample = [self.upsample_0, self.upsample_1, self.upsample_2, self.upsample_3]
@@ -929,7 +924,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['self_modulator']
+    opt.degradation_embedding_method = ['deform_conv']
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
