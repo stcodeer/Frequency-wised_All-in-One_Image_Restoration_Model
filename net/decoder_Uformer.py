@@ -410,6 +410,10 @@ class LeWinTransformerBlock(nn.Module):
             kernel_size = 1
             self.degradation_modulator = Downsample(degradation_dim, dim, kernel_size=kernel_size, stride=(input_resolution[0]//win_size, input_resolution[1]//win_size), padding=(kernel_size-1)//2)
             self.degradation_modulator_embed = nn.Linear(2 * dim, dim)#.cuda()
+            self.norm_degradation_modulator = nn.Sequential(
+                norm_layer(dim),
+                nn.LeakyReLU(0.1, True),
+            )
         else:
             self.degradation_modulator = None
 
@@ -532,6 +536,7 @@ class LeWinTransformerBlock(nn.Module):
             win_num = self.input_resolution[0] // self.win_size * self.input_resolution[1] // self.win_size
             
             inter = self.degradation_modulator(inter)
+            inter = self.norm_degradation_modulator(inter)
             inter = torch.unsqueeze(inter, dim=1)
             inter = inter.repeat(1, win_num, 1, 1)
             
@@ -669,7 +674,7 @@ class UformerDecoder(nn.Module):
         
         # Degradation Representation Embedding
         if 'residual' in opt.degradation_embedding_method:
-            self.degradation_embed = [nn.Linear((2 ** (i + 1)) * embed_dim, (2 ** i) * embed_dim)# .cuda()
+            self.degradation_embed = [nn.Linear((2 ** (i + 1)) * embed_dim, (2 ** i) * embed_dim).cuda()
                               for i in range(self.num_enc_layers + 1)]
 
         # Input/Output
@@ -768,7 +773,7 @@ class UformerDecoder(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            modulator=modulator,cross_modulator=cross_modulator,
+                            # modulator=modulator,cross_modulator=cross_modulator,
                             degradation_dim=embed_dim*16,
                             degradation_embedding_method=opt.degradation_embedding_method)
 
@@ -924,7 +929,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['deform_conv']
+    opt.degradation_embedding_method = ['modulator']
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
