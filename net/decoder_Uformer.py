@@ -427,6 +427,10 @@ class LeWinTransformerBlock(nn.Module):
 
         if 'self_modulator' in degradation_embedding_method:
             self.norm1 = SelfModulatedLayerNorm(dim, degradation_dim)
+            self.norm1_norm_degradation = nn.Sequential(
+                norm_layer(degradation_dim),
+                nn.LeakyReLU(0.1, True),
+            )
         else:
             self.norm1 = norm_layer(dim)
             
@@ -439,6 +443,10 @@ class LeWinTransformerBlock(nn.Module):
 
         if 'self_modulator' in degradation_embedding_method:
             self.norm2 = SelfModulatedLayerNorm(dim, degradation_dim)
+            self.norm2_norm_degradation = nn.Sequential(
+                norm_layer(degradation_dim),
+                nn.LeakyReLU(0.1, True),
+            )
         else:
             self.norm2 = norm_layer(dim)
             
@@ -510,7 +518,7 @@ class LeWinTransformerBlock(nn.Module):
         shortcut = x
         
         if 'self_modulator' in self.degradation_embedding_method:
-            x = self.norm1(x, inter)
+            x = self.norm1(x, self.norm1_norm_degradation(inter))
         else:
             x = self.norm1(x)
 
@@ -565,7 +573,7 @@ class LeWinTransformerBlock(nn.Module):
         x = shortcut + self.drop_path(x)
         
         if 'self_modulator' in self.degradation_embedding_method:
-            norm = self.norm2(x, inter)
+            norm = self.norm2(x, self.norm2_norm_degradation(inter))
         else:
             norm = self.norm2(x)
         
