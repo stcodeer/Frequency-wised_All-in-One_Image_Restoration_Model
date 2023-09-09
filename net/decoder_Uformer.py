@@ -77,19 +77,19 @@ class ConvProjection(nn.Module):
 
 
 class LinearProjection(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., bias=True):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., bias=True, dimkv=None):
         super().__init__()
         inner_dim = dim_head *  heads
         self.heads = heads
         self.to_q = nn.Linear(dim, inner_dim, bias = bias)
-        self.to_kv = nn.Linear(dim, inner_dim * 2, bias = bias)
+        self.to_kv = nn.Linear(dim if dimkv == None else dimkv, inner_dim * 2, bias = bias)
         self.dim = dim
         self.inner_dim = inner_dim
 
     def forward(self, x, attn_kv=None):
         B_, N, C = x.shape
         if attn_kv is not None:
-            attn_kv = attn_kv.unsqueeze(0).repeat(B_,1,1)
+            pass
         else:
             attn_kv = x
         N_kv = attn_kv.size(1)
@@ -101,7 +101,9 @@ class LinearProjection(nn.Module):
 
 
 class WindowAttention(nn.Module):
-    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 degradation_dim=-1,
+                 degradation_embedding_method=[]):
         
         import warnings
         warnings.filterwarnings('ignore')
@@ -132,9 +134,14 @@ class WindowAttention(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=.02)
             
         if token_projection =='conv':
-            self.qkv = ConvProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
+            assert False
+            # self.qkv = ConvProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
         elif token_projection =='linear':
-            self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
+            if 'attention_residual' in degradation_embedding_method:
+                self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias, dimkv=degradation_dim)
+            else:
+                self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
+                
         else:
             raise Exception("Projection error!") 
         
@@ -387,6 +394,7 @@ class LeWinTransformerBlock(nn.Module):
                  degradation_embedding_method=[]):
         super().__init__()
         
+        self.degradation_dim = degradation_dim
         self.degradation_embedding_method = degradation_embedding_method
         
         self.dim = dim
@@ -417,13 +425,13 @@ class LeWinTransformerBlock(nn.Module):
         else:
             self.degradation_modulator = None
 
-        if cross_modulator:
-            self.cross_modulator = nn.Embedding(win_size*win_size, dim) # cross_modulator
-            self.cross_attn = Attention(dim,num_heads,qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-                    token_projection=token_projection,)
-            self.norm_cross = norm_layer(dim)
-        else:
-            self.cross_modulator = None
+        # if cross_modulator:
+        #     self.cross_modulator = nn.Embedding(win_size*win_size, dim) # cross_modulator
+        #     self.cross_attn = Attention(dim,num_heads,qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+        #             token_projection=token_projection,)
+        #     self.norm_cross = norm_layer(dim)
+        # else:
+        #     self.cross_modulator = None
 
         if 'self_modulator' in degradation_embedding_method:
             self.norm1 = SelfModulatedLayerNorm(dim, degradation_dim)
@@ -437,7 +445,9 @@ class LeWinTransformerBlock(nn.Module):
         self.attn = WindowAttention(
             dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-            token_projection=token_projection)
+            token_projection=token_projection,
+            degradation_dim=degradation_dim,
+            degradation_embedding_method=degradation_embedding_method)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
@@ -509,11 +519,11 @@ class LeWinTransformerBlock(nn.Module):
             attn_mask = attn_mask + shift_attn_mask if attn_mask is not None else shift_attn_mask
 
 
-        if self.cross_modulator is not None:
-            shortcut = x
-            x_cross = self.norm_cross(x)
-            x_cross = self.cross_attn(x, self.cross_modulator.weight)
-            x = shortcut + x_cross
+        # if self.cross_modulator is not None:
+        #     shortcut = x
+        #     x_cross = self.norm_cross(x)
+        #     x_cross = self.cross_attn(x, self.cross_modulator.weight)
+        #     x = shortcut + x_cross
     
         shortcut = x
         
@@ -556,7 +566,13 @@ class LeWinTransformerBlock(nn.Module):
             wmsa_in = wmsa_in.view(-1, self.win_size*self.win_size, C)
                 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
+        if 'attention_residual' in self.degradation_embedding_method:
+            attn_inter = inter.view(B, H, W, self.degradation_dim)
+            attn_inter_windows = window_partition(attn_inter, self.win_size)
+            attn_inter_windows = attn_inter_windows.view(-1, self.win_size * self.win_size, self.degradation_dim)
+            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, mask=attn_mask)  # nW*B, win_size*win_size, C
+        else:
+            attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -937,7 +953,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['modulator']
+    opt.degradation_embedding_method = ['attention_residual']
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
