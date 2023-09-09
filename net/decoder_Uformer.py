@@ -442,6 +442,12 @@ class LeWinTransformerBlock(nn.Module):
         else:
             self.norm1 = norm_layer(dim)
             
+        if 'attention_residual' in self.degradation_embedding_method:
+            self.norm_degradation_attention = nn.Sequential(
+                norm_layer(degradation_dim),
+                nn.LeakyReLU(0.1, True),
+            )
+            
         self.attn = WindowAttention(
             dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
@@ -567,7 +573,8 @@ class LeWinTransformerBlock(nn.Module):
                 
         # W-MSA/SW-MSA
         if 'attention_residual' in self.degradation_embedding_method:
-            attn_inter = inter.view(B, H, W, self.degradation_dim)
+            attn_inter = self.norm_degradation_attention(inter)
+            attn_inter = attn_inter.view(B, H, W, self.degradation_dim)
             attn_inter_windows = window_partition(attn_inter, self.win_size)
             attn_inter_windows = attn_inter_windows.view(-1, self.win_size * self.win_size, self.degradation_dim)
             attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, mask=attn_mask)  # nW*B, win_size*win_size, C
