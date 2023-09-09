@@ -77,18 +77,42 @@ class ConvProjection(nn.Module):
 
 
 class LinearProjection(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., bias=True, dimkv=None):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., bias=True, dimkv=None, kv_source=None):
         super().__init__()
         inner_dim = dim_head *  heads
         self.heads = heads
         self.to_q = nn.Linear(dim, inner_dim, bias = bias)
-        self.to_kv = nn.Linear(dim if dimkv == None else dimkv, inner_dim * 2, bias = bias)
+        if kv_source == 'attention_kv':
+            self.to_k = nn.Linear(dimkv, inner_dim, bias = bias)
+            self.to_v = nn.Linear(dimkv, inner_dim, bias = bias)
+        elif kv_source == 'attention_residual':
+            self.to_kv = nn.Linear(dimkv, inner_dim * 2, bias = bias)
+        else:
+            self.to_kv = nn.Linear(dim, inner_dim * 2, bias = bias)
         self.dim = dim
         self.inner_dim = inner_dim
+        self.dimkv = dimkv
+        self.kv_source = kv_source
 
     def forward(self, x, attn_kv=None):
         B_, N, C = x.shape
-        if attn_kv is not None:
+        
+        if self.kv_source == 'attention_kv':
+            q = self.to_q(x).reshape(B_, N, 1, self.heads, C // self.heads).permute(2, 0, 3, 1, 4)[0]
+            
+            embed_dim = attn_kv[0].shape[3]
+            k = rearrange(attn_kv[0], 'b heads win_size embed_dim -> b win_size (heads embed_dim)')
+            k = self.to_k(k)
+            k = rearrange(k, 'b win_size (heads embed_dim) -> b heads win_size embed_dim', embed_dim=embed_dim)
+            
+            v = rearrange(attn_kv[1], 'b heads win_size embed_dim -> b win_size (heads embed_dim)')
+            v = self.to_v(v)
+            v = rearrange(v, 'b win_size (heads embed_dim) -> b heads win_size embed_dim', embed_dim=embed_dim)
+            
+            return q, k, v
+            
+            
+        if self.kv_source == 'attention_residual':
             pass
         else:
             attn_kv = x
@@ -137,8 +161,10 @@ class WindowAttention(nn.Module):
             assert False
             # self.qkv = ConvProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
         elif token_projection =='linear':
-            if 'attention_residual' in degradation_embedding_method:
-                self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias, dimkv=degradation_dim)
+            if 'attention_kv' in degradation_embedding_method:
+                self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias, dimkv=degradation_dim, kv_source='attention_kv')
+            elif 'attention_residual' in degradation_embedding_method:
+                self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias, dimkv=degradation_dim, kv_source='attention_residual')
             else:
                 self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
                 
@@ -488,7 +514,7 @@ class LeWinTransformerBlock(nn.Module):
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"win_size={self.win_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio},modulator={self.modulator}"
 
-    def forward(self, x, inter=None, mask=None):
+    def forward(self, x, inter=None, inter_kv=None, mask=None):
         B, L, C = x.shape
         H = int(math.sqrt(L))
         W = int(math.sqrt(L))
@@ -577,7 +603,9 @@ class LeWinTransformerBlock(nn.Module):
             attn_inter = attn_inter.view(B, H, W, self.degradation_dim)
             attn_inter_windows = window_partition(attn_inter, self.win_size)
             attn_inter_windows = attn_inter_windows.view(-1, self.win_size * self.win_size, self.degradation_dim)
-            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, mask=attn_mask)  # nW*B, win_size*win_size, C
+            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, mask=attn_mask)
+        elif 'attention_kv' in self.degradation_embedding_method:
+            attn_windows = self.attn(wmsa_in, attn_kv=inter_kv, mask=attn_mask)
         else:
             attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
 
@@ -659,12 +687,13 @@ class BasicUformerLayer(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"    
 
-    def forward(self, x, inter=None, mask=None):
+    def forward(self, x, inter=None, inter_kv=None, mask=None):
         for blk in self.blocks:
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
+                assert False
+                # x = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x, inter, mask)
+                x = blk(x, inter, inter_kv, mask)
         return x
 
 
@@ -936,7 +965,7 @@ class UformerDecoder(nn.Module):
             conv4 = self.degradation_embed[4](torch.cat([inter[4], conv4], -1))
         
         fea = conv4
-        fea = self.bottleneck_1(fea, inter[4], mask=mask)
+        fea = self.bottleneck_1(fea, inter[4], inter[5][4], mask=mask)
 
         #Decoder
         for i in reversed(range(self.num_dec_layers)):
@@ -946,7 +975,7 @@ class UformerDecoder(nn.Module):
                 conv[i] = self.degradation_embed[i](torch.cat([inter[i], conv[i]], -1))
                 
             fea = torch.cat([fea, conv[i]], -1)
-            fea = self.decoderlayer[i](fea, inter[i], mask=mask)
+            fea = self.decoderlayer[i](fea, inter[i], inter[5][i], mask=mask)
 
         # Output Projection
         y = self.output_proj(fea)
@@ -960,7 +989,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['attention_residual']
+    opt.degradation_embedding_method = ['attention_kv']
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
@@ -973,6 +1002,14 @@ if __name__ == "__main__":
     embed_dim = 56
     x = torch.zeros((B, C, H, W))
     inter = [torch.zeros((B, H*W, embed_dim)), torch.zeros((B, H//2*W//2, embed_dim*2)), torch.zeros((B, H//4*W//4, embed_dim*4)), torch.zeros((B, H//8*W//8, embed_dim*8)), torch.zeros((B, H//16*W//16, embed_dim*16))]
+    
+    win_size = 8
+    inter_kv = []
+    for i in range(5):
+        tmp = torch.zeros(B * H//win_size//(2 ** i) * W//win_size//(2 ** i), 2 ** i, win_size ** 2, embed_dim)
+        inter_kv.append([tmp, tmp])
+    inter.append(inter_kv)
+    
     restored = model_restoration(x, inter)
     
     # from ptflops import get_model_complexity_info

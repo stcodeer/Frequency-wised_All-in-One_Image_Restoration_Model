@@ -100,12 +100,16 @@ class LinearProjection(nn.Module):
 
 
 class WindowAttention(nn.Module):
-    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 need_kv=False):
         
         import warnings
         warnings.filterwarnings('ignore')
 
         super().__init__()
+        
+        self.need_kv = need_kv
+        
         self.dim = dim
         self.win_size = win_size  # Wh, Ww
         self.num_heads = num_heads
@@ -172,7 +176,10 @@ class WindowAttention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        if self.need_kv:
+            return x, k, v
+        else:
+            return x, None, None
 
     def extra_repr(self) -> str:
         return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
@@ -381,7 +388,8 @@ class LeWinTransformerBlock(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, win_size=8, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
-                 modulator=False,cross_modulator=False):
+                 modulator=False,cross_modulator=False,
+                 need_kv=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -412,7 +420,8 @@ class LeWinTransformerBlock(nn.Module):
         self.attn = WindowAttention(
             dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-            token_projection=token_projection)
+            token_projection=token_projection,
+            need_kv=need_kv)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -499,7 +508,7 @@ class LeWinTransformerBlock(nn.Module):
             wmsa_in = x_windows
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
+        attn_windows, K, V = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -516,7 +525,7 @@ class LeWinTransformerBlock(nn.Module):
         x = shortcut + self.drop_path(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         del attn_mask
-        return x
+        return x, K, V
 
 
 #########################################
@@ -526,7 +535,8 @@ class BasicUformerLayer(nn.Module):
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, use_checkpoint=False,
                  token_projection='linear',token_mlp='ffn', shift_flag=True,
-                 modulator=False,cross_modulator=False):
+                 modulator=False,cross_modulator=False,
+                 need_kv=False):
 
         super().__init__()
         self.dim = dim
@@ -544,7 +554,8 @@ class BasicUformerLayer(nn.Module):
                                     drop=drop, attn_drop=attn_drop,
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
-                                    modulator=modulator,cross_modulator=cross_modulator)
+                                    modulator=modulator,cross_modulator=cross_modulator,
+                                    need_kv=(need_kv and i + 1 == depth))
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
@@ -556,19 +567,20 @@ class BasicUformerLayer(nn.Module):
                                     drop=drop, attn_drop=attn_drop,
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
-                                    modulator=modulator,cross_modulator=cross_modulator)
+                                    modulator=modulator,cross_modulator=cross_modulator,
+                                    need_kv=(need_kv and i + 1 == depth))
             for i in range(depth)])
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"    
 
     def forward(self, x, mask=None):
-        for blk in self.blocks:
+        for i, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
+                x, K, V = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x,mask)
-        return x
+                x, K, V = blk(x,mask)
+        return x, K, V
 
 
 class Uformer(nn.Module):
@@ -583,6 +595,8 @@ class Uformer(nn.Module):
         super().__init__()
         
         self.opt = opt
+        
+        need_kv = 'attention_kv' in opt.degradation_embedding_method
         
         modulator = False
         cross_modulator = False
@@ -623,7 +637,8 @@ class Uformer(nn.Module):
                             drop_path=enc_dpr[sum(depths[:0]):sum(depths[:1])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            need_kv=need_kv)
         self.dowsample_0 = dowsample(embed_dim, embed_dim*2)
         self.encoderlayer_1 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
@@ -638,7 +653,8 @@ class Uformer(nn.Module):
                             drop_path=enc_dpr[sum(depths[:1]):sum(depths[:2])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            need_kv=need_kv)
         self.dowsample_1 = dowsample(embed_dim*2, embed_dim*4)
         self.encoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
@@ -653,7 +669,8 @@ class Uformer(nn.Module):
                             drop_path=enc_dpr[sum(depths[:2]):sum(depths[:3])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            need_kv=need_kv)
         self.dowsample_2 = dowsample(embed_dim*4, embed_dim*8)
         self.encoderlayer_3 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
@@ -668,7 +685,8 @@ class Uformer(nn.Module):
                             drop_path=enc_dpr[sum(depths[:3]):sum(depths[:4])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            need_kv=need_kv)
         self.dowsample_3 = dowsample(embed_dim*8, embed_dim*16)
 
         # Bottleneck
@@ -685,7 +703,8 @@ class Uformer(nn.Module):
                             drop_path=conv_dpr,
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            need_kv=need_kv)
 
         self.apply(self._init_weights)
 
@@ -715,19 +734,19 @@ class Uformer(nn.Module):
         y = self.input_proj(x) # B H*W embed_dim
         y = self.pos_drop(y)
         #Encoder
-        conv0 = self.encoderlayer_0(y,mask=mask)
+        conv0, K0, V0 = self.encoderlayer_0(y,mask=mask)
         pool0 = self.dowsample_0(conv0) # B H/2*W/2 embed_dim*2
-        conv1 = self.encoderlayer_1(pool0,mask=mask)
+        conv1, K1, V1 = self.encoderlayer_1(pool0,mask=mask)
         pool1 = self.dowsample_1(conv1) # B H/4*W/4 embed_dim*4
-        conv2 = self.encoderlayer_2(pool1,mask=mask)
+        conv2, K2, V2 = self.encoderlayer_2(pool1,mask=mask)
         pool2 = self.dowsample_2(conv2) # B H/8*W/8 embed_dim*8
-        conv3 = self.encoderlayer_3(pool2,mask=mask)
+        conv3, K3, V3 = self.encoderlayer_3(pool2,mask=mask)
         pool3 = self.dowsample_3(conv3) # B H/16*W/16 embed_dim*16
 
         # Bottleneck
-        conv4 = self.conv(pool3, mask=mask)
+        conv4, K4, V4 = self.conv(pool3, mask=mask)
 
-        return conv4, [conv0, conv1, conv2, conv3, conv4]
+        return conv4, [conv0, conv1, conv2, conv3, conv4, [[K0, V0], [K1, V1], [K2, V2], [K3, V3], [K4, V4]]]
 
 
 class UformerEncoder(nn.Module):
@@ -782,6 +801,8 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
+    opt.degradation_embedding_method = ['attention_kv']
+    
     model_restoration = UformerEncoder(opt)
     # print(model_restoration)
     
@@ -789,6 +810,8 @@ if __name__ == "__main__":
     
     x = torch.zeros((4, 3, 128, 128))
     fea, out, inter = model_restoration(x)
+    for x in inter[5]:
+        print(x[0].shape, x[1].shape)
     
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,

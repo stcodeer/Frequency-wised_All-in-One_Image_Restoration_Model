@@ -32,7 +32,7 @@ parser.add_argument('--encoder_dim', type=int, default=None, help='the output di
 
 # Uformer encoder+decoder
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
-                    help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual].(only available for Uformer encoder+decoder).')
+                    help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
 
 # ViT encoder
