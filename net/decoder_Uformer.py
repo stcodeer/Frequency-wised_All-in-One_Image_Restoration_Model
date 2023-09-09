@@ -553,14 +553,14 @@ class LeWinTransformerBlock(nn.Module):
         if 'modulator' in self.degradation_embedding_method:
             win_num = self.input_resolution[0] // self.win_size * self.input_resolution[1] // self.win_size
             
-            inter = self.degradation_modulator(inter)
-            inter = self.norm_degradation_modulator(inter)
-            inter = torch.unsqueeze(inter, dim=1)
-            inter = inter.repeat(1, win_num, 1, 1)
+            modulator = self.degradation_modulator(inter)
+            modulator = self.norm_degradation_modulator(modulator)
+            modulator = torch.unsqueeze(modulator, dim=1)
+            modulator = modulator.repeat(1, win_num, 1, 1)
             
             wmsa_in = wmsa_in.view(B, win_num, self.win_size*self.win_size, C)
             
-            wmsa_in = torch.cat([inter, wmsa_in], -1)
+            wmsa_in = torch.cat([modulator, wmsa_in], -1)
             wmsa_in = self.degradation_modulator_embed(wmsa_in)
             
             wmsa_in = wmsa_in.view(-1, self.win_size*self.win_size, C)
