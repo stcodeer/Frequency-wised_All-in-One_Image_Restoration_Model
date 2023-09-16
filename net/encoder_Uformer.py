@@ -807,11 +807,10 @@ class UformerEncoder(nn.Module):
         if not self.opt.num_frequency_bands == -1:
             combined_freq_fea = self.decompose(fea)
             combined_freq_fea = rearrange(combined_freq_fea, 'num_bands b c h w k -> num_bands b (c k) h w')
-            combined_freq_fea = torch.unbind(combined_freq_fea, 0)
+            combined_freq_fea = [*torch.unbind(combined_freq_fea, 0)]
             
-            freq_fea = []
+            freq_fea = combined_freq_fea
             for i in range(self.opt.num_frequency_bands):
-                freq_fea.append(combined_freq_fea[i])
                 freq_fea[i] = freq_fea[i].permute(0, 2, 3, 1)
                 freq_fea[i] = self.freq_linear[i](freq_fea[i])
                 freq_fea[i] = freq_fea[i].permute(0, 3, 1, 2)
