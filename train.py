@@ -19,10 +19,10 @@ from option import options as opt
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)
-    random.seed(1234)
-    np.random.seed(1234)
-    torch.manual_seed(1234)
-    torch.cuda.manual_seed_all(1234)
+    # random.seed(1234)
+    # np.random.seed(1234)
+    # torch.manual_seed(1234)
+    # torch.cuda.manual_seed_all(1234)
 
     checkout(opt.output_path)
     checkout(opt.ckpt_path)
