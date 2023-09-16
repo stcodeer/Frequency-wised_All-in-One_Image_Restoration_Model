@@ -780,9 +780,9 @@ class UformerEncoder(nn.Module):
         # frequency domain
         if not self.opt.num_frequency_bands == -1:
             self.decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands, img_size, img_size, inverse=False)
-            self.freq_linear = []
-            self.freq_avg = []
-            self.freq_mlp = []
+            self.freq_linear = nn.ModuleList()
+            self.freq_avg = nn.ModuleList()
+            self.freq_mlp = nn.ModuleList()
             for i in range(opt.num_frequency_bands):
                 self.freq_linear.append(nn.Linear(opt.encoder_dim * 2, opt.encoder_dim))
                 self.freq_avg.append(nn.AdaptiveAvgPool2d(1))
