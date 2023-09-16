@@ -792,6 +792,9 @@ class UformerEncoder(nn.Module):
                     nn.Linear(opt.encoder_dim, opt.encoder_dim),
                 ))
         
+        if 'norm' in self.opt.frequency_feature_enhancement_method:
+            self.freq_norm = nn.LayerNorm([opt.encoder_dim * 2, img_size, img_size])
+
     def forward(self, x, mask=None):
         # B C H W
         x, inter = self.uformer(x, mask) # B H/16*W/16 embed_dim*16
@@ -806,7 +809,11 @@ class UformerEncoder(nn.Module):
         
         if not self.opt.num_frequency_bands == -1:
             combined_freq_fea = self.decompose(fea)
-            combined_freq_fea = rearrange(combined_freq_fea, 'num_bands b c h w k -> num_bands b (c k) h w')
+            combined_freq_fea = rearrange(combined_freq_fea, 'num_bands b c h w k -> num_bands b (c k) h w') # k = 2 (real, image)
+            
+            if 'norm' in self.opt.frequency_feature_enhancement_method:
+                combined_freq_fea = self.freq_norm(combined_freq_fea)
+                
             combined_freq_fea = [*torch.unbind(combined_freq_fea, 0)]
             
             freq_fea = combined_freq_fea
