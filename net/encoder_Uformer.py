@@ -11,6 +11,7 @@ from einops import rearrange, repeat
 import math
 
 from .utils.leff import LeFF, FastLeFF
+from .utils.frequency_decompose import FrequencyDecompose
 
 class SepConv2d(torch.nn.Module):
     def __init__(self,
@@ -776,6 +777,21 @@ class UformerEncoder(nn.Module):
             nn.Linear(opt.encoder_dim, opt.encoder_dim),
         )
         
+        # frequency domain
+        if not self.opt.num_frequency_bands == -1:
+            self.decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands, img_size, img_size, inverse=False)
+            self.freq_linear = []
+            self.freq_avg = []
+            self.freq_mlp = []
+            for i in range(opt.num_frequency_bands):
+                self.freq_linear.append(nn.Linear(opt.encoder_dim * 2, opt.encoder_dim))
+                self.freq_avg.append(nn.AdaptiveAvgPool2d(1))
+                self.freq_mlp.append(nn.Sequential(
+                    nn.Linear(opt.encoder_dim, opt.encoder_dim),
+                    nn.LeakyReLU(0.1, True),
+                    nn.Linear(opt.encoder_dim, opt.encoder_dim),
+                ))
+        
     def forward(self, x, mask=None):
         # B C H W
         x, inter = self.uformer(x, mask) # B H/16*W/16 embed_dim*16
@@ -786,11 +802,29 @@ class UformerEncoder(nn.Module):
         
         fea = self.norm(fea)
         
+        freq_out = []
+        
+        if not self.opt.num_frequency_bands == -1:
+            combined_freq_fea = self.decompose(fea)
+            combined_freq_fea = rearrange(combined_freq_fea, 'num_bands b c h w k -> num_bands b (c k) h w')
+            combined_freq_fea = torch.unbind(combined_freq_fea, 0)
+            
+            freq_fea = []
+            for i in range(self.opt.num_frequency_bands):
+                freq_fea.append(combined_freq_fea[i])
+                freq_fea[i] = freq_fea[i].permute(0, 2, 3, 1)
+                freq_fea[i] = self.freq_linear[i](freq_fea[i])
+                freq_fea[i] = freq_fea[i].permute(0, 3, 1, 2)
+                
+                freq_fea[i] = self.freq_avg[i](freq_fea[i]).squeeze(-1).squeeze(-1)
+                
+                freq_out.append(self.freq_mlp[i](freq_fea[i]))
+                
         fea = self.avg(fea).squeeze(-1).squeeze(-1)
         
         out = self.mlp(fea) # B self.encoder_dim
 
-        return fea, out, inter
+        return fea, [out, *freq_out], inter
 
 
 if __name__ == "__main__":
@@ -802,6 +836,7 @@ if __name__ == "__main__":
     from option import options as opt
     
     opt.degradation_embedding_method = ['attention_kv']
+    opt.num_frequency_bands = 5
     
     model_restoration = UformerEncoder(opt)
     # print(model_restoration)
@@ -810,8 +845,8 @@ if __name__ == "__main__":
     
     x = torch.zeros((4, 3, 128, 128))
     fea, out, inter = model_restoration(x)
-    for x in inter[5]:
-        print(x[0].shape, x[1].shape)
+    # for x in inter[5]:
+    #     print(x[0].shape, x[1].shape)
     
     # from ptflops import get_model_complexity_info
     # macs, params = get_model_complexity_info(model_restoration, (3, input_size, input_size), as_strings=True,

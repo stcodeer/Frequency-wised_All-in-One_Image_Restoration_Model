@@ -56,7 +56,7 @@ class FrequencyDecompose(nn.Module):
             if self.inverse:
                 decomposed_fre_x = torch.fft.ifft2(decomposed_fre_x).real
             else:
-                decomposed_fre_x = torch.abs(decomposed_fre_x)
+                decomposed_fre_x = torch.stack((decomposed_fre_x.real, decomposed_fre_x.imag), -1)
             
             decomposed_x.append(decomposed_fre_x.unsqueeze(0))
         

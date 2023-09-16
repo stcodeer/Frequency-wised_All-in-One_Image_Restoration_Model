@@ -8,7 +8,7 @@ parser.add_argument('--cuda', type=int, default=0)
 parser.add_argument('--epochs', type=int, default=1000, help='maximum number of epochs to train the total model.')
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
-parser.add_argument('--contrast_loss_weight', type=float, default=0.1, help='contrast loss weight in objective function.')
+parser.add_argument('--contrast_loss_weight', nargs='+', type=float, default=[0.1, 0.2], help='contrast loss weight in objective function.')
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
@@ -34,6 +34,7 @@ parser.add_argument('--encoder_dim', type=int, default=None, help='the output di
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
                     help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
+parser.add_argument('--num_frequency_bands', type=int, default=-1, help='the number of frequency bands used in contrast loss in the frequency domain.(only available for Uformer encoder+decoder)')
 
 # ViT encoder
 parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')

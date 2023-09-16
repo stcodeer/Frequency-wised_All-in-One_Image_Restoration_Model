@@ -60,6 +60,15 @@ if __name__ == '__main__':
     optimizer = optim.Adam(net.parameters(), lr=opt.lr)
     CE = nn.CrossEntropyLoss().cuda()
     l1 = nn.L1Loss().cuda()
+        
+    if opt.num_frequency_bands == -1:
+        num_losses = 1
+        opt.contrast_loss_weight = opt.contrast_loss_weight[:1]
+    else:
+        num_losses = opt.num_frequency_bands + 1
+        opt.contrast_loss_weight[1] = opt.contrast_loss_weight[1] / (num_losses - 1)
+        for i in range(num_losses-2):
+            opt.contrast_loss_weight.append(opt.contrast_loss_weight[1])
 
     # Start training
     print('Start training...')
@@ -74,13 +83,13 @@ if __name__ == '__main__':
 
                 if epoch < opt.epochs_encoder:
                     _, output, target, _ = net.E(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                    contrast_loss = CE(output, target)
-                    loss = contrast_loss
+                    contrast_loss = [CE(output[i], target[i]) for i in range(num_losses)]
+                    loss = torch.sum(torch.tensor(opt.contrast_loss_weight) / opt.contrast_loss_weight[0] * torch.tensor(contrast_loss))
                 else:
                     restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                    contrast_loss = CE(output, target)
+                    contrast_loss = [CE(output[i], target[i]) for i in range(num_losses)]
                     l1_loss = l1(restored, clean_patch_1)
-                    loss = l1_loss + opt.contrast_loss_weight * contrast_loss
+                    loss = l1_loss + torch.sum(torch.tensor(opt.contrast_loss_weight) * torch.tensor(contrast_loss))
 
                 # backward
                 loss.backward()
