@@ -183,13 +183,14 @@ def get_frequency_distribution(img, size=0.2, norm=True):
     return tot_value
     
     
-def plot_scatter(x, y, labels=None, xlabel=None, ylabel=None, xlim=(0, 40), ylim=(0, 40), figsize=(7, 7), save_path=None):
+def plot_scatter(x, y, labels=None, xlabel=None, ylabel=None, title=None, set_lim=True, xlim=(0, 40), ylim=(0, 40), figsize=(7, 7), save_path=None):
     c = ['r', 'b', 'g', 'k', 'y', 'c', 'm']
         
     fig, ax = plt.subplots(figsize=figsize)
     
-    ax.set_xlim(xlim[0], xlim[1])
-    ax.set_ylim(ylim[0], ylim[1])
+    if set_lim:
+        ax.set_xlim(xlim[0], xlim[1])
+        ax.set_ylim(ylim[0], ylim[1])
     
     if not xlabel == None:
         ax.set_xlabel(xlabel)
@@ -202,6 +203,9 @@ def plot_scatter(x, y, labels=None, xlabel=None, ylabel=None, xlim=(0, 40), ylim
             ax.scatter(x[idx], y[idx], s=15, color=c[idx], label=labels[idx])
         else:
             ax.scatter(x[idx], y[idx], s=15, color=c[idx])
+            
+    if not title == None:
+        plt.title(title)
     
     plt.legend(loc="upper right")
         
