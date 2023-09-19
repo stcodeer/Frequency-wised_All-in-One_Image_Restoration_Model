@@ -29,6 +29,8 @@ parser.add_argument('--output_path', type=str, default='output/tmp/', help='outp
 parser.add_argument('--encoder_type', type=str, default='Uformer', help='should be in [ResNet, ViT, Uformer]')
 parser.add_argument('--decoder_type', type=str, default='Uformer', help='should be in [ResNet, Uformer]')
 parser.add_argument('--encoder_dim', type=int, default=None, help='the output dimensionality of encoder(default: 256 when ResNet, 3 when ViT, 256 when Uformer).')
+parser.add_argument('--frequency_decompose_type', type=str, default='none',
+                    help='should be in [%_bands, DC, none].(only available for ViT encoder and Uformer encoder+decoder)')
 
 # Uformer encoder+decoder
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
@@ -39,7 +41,6 @@ parser.add_argument('--frequency_feature_enhancement_method', nargs='+', type=st
                     help='how feature maps used for calculating frequency domain losses are transformed to enhance contrast in the frequency domain, should be in [norm].(only available for Uformer encoder+decoder)')
 # ViT encoder
 parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
-parser.add_argument('--frequency_decompose_type', type=str, default='none', help='should be in [%_bands, DC, none].(only available for ViT encoder)')
 parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT encoder)')
 parser.add_argument('--frequency_decompose_type_2', type=bool, default=False, help='(only available for ViT encoder)')
 
