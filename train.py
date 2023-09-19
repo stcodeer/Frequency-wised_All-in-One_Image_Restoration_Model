@@ -87,9 +87,9 @@ if __name__ == '__main__':
                     loss = contrast_loss
                 else:
                     restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                    contrast_loss = sum([opt.contrast_loss_weight[i] * CE(output[i], target[i]) for i in range(num_losses)])
+                    contrast_loss = sum([opt.contrast_loss_weight[i] / opt.contrast_loss_weight[0] * CE(output[i], target[i]) for i in range(num_losses)])
                     l1_loss = l1(restored, clean_patch_1)
-                    loss = l1_loss + contrast_loss
+                    loss = l1_loss + opt.contrast_loss_weight[0] * contrast_loss
 
                 # backward
                 loss.backward()
