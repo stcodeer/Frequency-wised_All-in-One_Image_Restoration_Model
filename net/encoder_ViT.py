@@ -200,4 +200,4 @@ class ViTEncoder(nn.Module):
         
         out = self.mlp(fea)
 
-        return fea, out, inter
+        return fea, [out], inter

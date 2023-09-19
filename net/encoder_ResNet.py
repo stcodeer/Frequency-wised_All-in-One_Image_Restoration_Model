@@ -44,7 +44,7 @@ class ResNetEncoder(nn.Module):
         fea = self.E(inter).squeeze(-1).squeeze(-1)
         out = self.mlp(fea)
 
-        return fea, out, inter
+        return fea, [out], inter
 
 
 if __name__ == "__main__":
