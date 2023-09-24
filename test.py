@@ -45,11 +45,11 @@ def test_by_task(net, task, epochs):
             if opt.save_imgs:
                 save_image_tensor(restored, output_path + img_name[0] + '.png')
 
-        print("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
+        print("PSNR/SSIM: %.2f/%.4f" % (psnr.avg, ssim.avg))
         # test_log_file.write("PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg))
         # test_log_file.close()
 
-    return "PSNR: %.2f, SSIM: %.4f" % (psnr.avg, ssim.avg)
+    return "PSNR/SSIM: %.2f/%.4f" % (psnr.avg, ssim.avg)
 
 if __name__ == '__main__':
     torch.cuda.set_device(opt.cuda)

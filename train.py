@@ -29,6 +29,8 @@ if __name__ == '__main__':
 
     train_log_file = open(opt.output_path + 'train.log', "w")
     opt_log_file = open(opt.output_path + 'options.log', "w")
+    result_log_file = open(os.path.join(opt.output_path, 'results.log'), "w")
+    # result_best_log_file = open(os.path.join(opt.output_path, 'results_best.log'), "w")
     # if not opt.frequency_decompose_type == 'none':
     #     lamb_q_log_file = open(opt.output_path + 'lamb_q.log', "w")
     #     lamb_k_log_file = open(opt.output_path + 'lamb_k.log', "w")
@@ -129,16 +131,14 @@ if __name__ == '__main__':
                     torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
             
             if (epoch + 1) % 10 == 0:
-                result_log_file = open(os.path.join(opt.output_path, 'epoch_%s_results.log'%str(epoch + 1)), "w")
+                result_log_file.write('%s Epochs Results:\n'%str(epoch + 1))
                 
                 net.eval()
-                
                 for task in opt.test_de_type:
                     result = test_by_task(net, task=task, epochs=epoch + 1)
                     result_log_file.write(task + ': ' + ' ' * (25 - len(task)) + result + '\n')
-                    
-                result_log_file.close()
 
+                result_log_file.flush()
                 net.train()
 
         if epoch <= opt.epochs_encoder:
