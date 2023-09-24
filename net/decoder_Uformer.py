@@ -152,7 +152,7 @@ class WindowAttention(nn.Module):
                 self.num_bands = 2
                 self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, head_dim, head_dim)
             
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, 1, num_heads))
+            self.lamb = nn.Parameter(torch.zeros(self.num_bands - 1, 1, num_heads))
         
 
         # define a parameter table of relative position bias
@@ -228,7 +228,7 @@ class WindowAttention(nn.Module):
             
             # assert torch.all(torch.abs(attn - torch.sum(attn_bands, dim=0)) < 1e-5), 'oops'
             
-            attn_bands = attn_bands * self.lamb[:, :, :, None, None]
+            attn_bands = attn_bands[1:] * self.lamb[:, :, :, None, None]
             
             attn = attn + torch.sum(attn_bands, dim=0)
 
@@ -797,7 +797,8 @@ class UformerDecoder(nn.Module):
                             drop_path=enc_dpr[sum(depths[:0]):sum(depths[:1])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            frequency_decompose_type=self.frequency_decompose_type,)
         self.dowsample_0 = dowsample(embed_dim, embed_dim*2)
         self.encoderlayer_1 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
@@ -812,7 +813,8 @@ class UformerDecoder(nn.Module):
                             drop_path=enc_dpr[sum(depths[:1]):sum(depths[:2])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            frequency_decompose_type=self.frequency_decompose_type,)
         self.dowsample_1 = dowsample(embed_dim*2, embed_dim*4)
         self.encoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
@@ -827,7 +829,8 @@ class UformerDecoder(nn.Module):
                             drop_path=enc_dpr[sum(depths[:2]):sum(depths[:3])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            frequency_decompose_type=self.frequency_decompose_type,)
         self.dowsample_2 = dowsample(embed_dim*4, embed_dim*8)
         self.encoderlayer_3 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
@@ -842,7 +845,8 @@ class UformerDecoder(nn.Module):
                             drop_path=enc_dpr[sum(depths[:3]):sum(depths[:4])],
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            frequency_decompose_type=self.frequency_decompose_type,)
         self.dowsample_3 = dowsample(embed_dim*8, embed_dim*16)
 
         # Bottleneck
@@ -859,7 +863,8 @@ class UformerDecoder(nn.Module):
                             drop_path=conv_dpr,
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
-                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag)
+                            token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
+                            frequency_decompose_type=self.frequency_decompose_type,)
         
         self.bottleneck_1 = BasicUformerLayer(dim=embed_dim*16,
                             output_dim=embed_dim*16,
