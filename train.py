@@ -117,7 +117,7 @@ if __name__ == '__main__':
                 train_log_file.flush()
 
             GPUS = 1
-            if (epoch + 1) % 100 == 0 or epoch + 1 == opt.epochs:
+            if epoch + 1 == opt.epochs:
                 checkpoint = {
                     "net": net.state_dict(),
                     'optimizer': optimizer.state_dict(),
@@ -127,7 +127,8 @@ if __name__ == '__main__':
                     torch.save(net.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
                 else:
                     torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
-                    
+            
+            if (epoch + 1) % 10 == 0:
                 result_log_file = open(os.path.join(opt.output_path, 'epoch_%s_results.log'%str(epoch + 1)), "w")
                 
                 net.eval()

@@ -735,7 +735,7 @@ class BasicUformerLayer(nn.Module):
 
 class UformerDecoder(nn.Module):
     def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
-                 embed_dim=56, depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+                 depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -745,6 +745,7 @@ class UformerDecoder(nn.Module):
         super().__init__()
         
         self.opt = opt
+        embed_dim = opt.embed_dim
         
         modulator = opt.learnable_modulator
         cross_modulator = False

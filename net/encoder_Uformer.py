@@ -586,7 +586,7 @@ class BasicUformerLayer(nn.Module):
 
 class Uformer(nn.Module):
     def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
-                 embed_dim=56, depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+                 depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -596,6 +596,7 @@ class Uformer(nn.Module):
         super().__init__()
         
         self.opt = opt
+        embed_dim = opt.embed_dim
         
         need_kv = 'attention_kv' in opt.degradation_embedding_method
         
@@ -751,10 +752,11 @@ class Uformer(nn.Module):
 
 
 class UformerEncoder(nn.Module):
-    def __init__(self, opt, img_size=128, in_chans=3, out_chans=3, embed_dim=56):
+    def __init__(self, opt, img_size=128, in_chans=3, out_chans=3):
         super().__init__()
         
         self.opt = opt
+        embed_dim = opt.embed_dim
         self.img_size = img_size
         
         self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=out_chans, embed_dim=embed_dim)

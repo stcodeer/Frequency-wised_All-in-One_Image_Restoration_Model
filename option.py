@@ -33,6 +33,7 @@ parser.add_argument('--frequency_decompose_type', type=str, default='none',
                     help='should be in [%_bands, DC, none].(only available for ViT encoder and Uformer encoder+decoder)')
 
 # Uformer encoder+decoder
+parser.add_argument('--embed_dim', type=int, default=56, help='the embedding dimensionality of Uformer(only available for Uformer encoder+decoder).')
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
                     help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
