@@ -39,6 +39,7 @@ parser.add_argument('--degradation_embedding_method', nargs='+', type=str, defau
                     help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
 parser.add_argument('--num_frequency_bands', type=int, default=-1, help='the number of frequency bands used in contrast loss in the frequency domain.(only available for Uformer encoder+decoder)')
+parser.add_argument('--num_frequency_bands_l1', type=int, default=-1, help='the number of frequency bands used in l1 loss in the frequency domain.(only available for Uformer encoder+decoder)')
 parser.add_argument('--frequency_feature_enhancement_method', nargs='+', type=str, default=[], 
                     help='how feature maps used for calculating frequency domain losses are transformed to enhance contrast in the frequency domain, should be in [norm].(only available for Uformer encoder+decoder)')
 # ViT encoder
