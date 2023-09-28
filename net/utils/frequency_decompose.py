@@ -11,7 +11,7 @@ class FrequencyDecompose(nn.Module):
         self.w = w
         self.inverse = inverse
         
-        assert size > 0 and size < 1, 'invalid frequency band width()'%(size)
+        assert size > 0 and size <= 1, 'invalid frequency band width(size=%s)'%(size)
         
         if self.type == 'frequency_decompose':
             self.Y = torch.arange(h).unsqueeze(1).cuda()
@@ -53,10 +53,14 @@ class FrequencyDecompose(nn.Module):
             
             decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
             
-            if self.inverse:
+            if self.inverse == 'visual':
+                decomposed_fre_x = torch.abs(decomposed_fre_x)
+            elif self.inverse == True:
                 decomposed_fre_x = torch.fft.ifft2(decomposed_fre_x).real
-            else:
+            elif self.inverse == False:
                 decomposed_fre_x = torch.stack((decomposed_fre_x.real, decomposed_fre_x.imag), -1)
+            else:
+                assert False
             
             decomposed_x.append(decomposed_fre_x.unsqueeze(0))
         
