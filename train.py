@@ -13,6 +13,7 @@ import numpy as np
 from utils.dataset_utils import TrainDataset, checkout
 from utils.visualization_utils import plot_image_grid, plot_loss_curve
 from net.model import AirNet
+from net.utils.frequency_decompose import FrequencyDecompose
 from test import test_by_task
 
 from option import options as opt
@@ -72,6 +73,8 @@ if __name__ == '__main__':
         for i in range(num_losses-2):
             opt.contrast_loss_weight.append(opt.contrast_loss_weight[1])
 
+    if not opt.num_frequency_bands_l1 == -1:
+        decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands_l1, opt.patch_size, opt.patch_size, inverse=False)
     # Start training
     print('Start training...')
     for epoch in range(opt.epochs):
@@ -91,6 +94,8 @@ if __name__ == '__main__':
                     restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
                     contrast_loss = sum([opt.contrast_loss_weight[i] / opt.contrast_loss_weight[0] * CE(output[i], target[i]) for i in range(num_losses)])
                     l1_loss = l1(restored, clean_patch_1)
+                    if not opt.num_frequency_bands_l1 == -1:
+                        l1_loss = l1_loss + 0.1 * l1(decompose(restored), decompose(clean_patch_1))
                     loss = l1_loss + opt.contrast_loss_weight[0] * contrast_loss
 
                 # backward
@@ -130,7 +135,7 @@ if __name__ == '__main__':
                 else:
                     torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
             
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % 1 == 0:
                 result_log_file.write('%s Epochs Results:\n'%str(epoch + 1))
                 
                 net.eval()
