@@ -3,59 +3,60 @@ import os
 import re
 import numpy as np
 
+from torchvision import datasets, transforms
+import torch
+import torch.nn as nn
+
+from tqdm import tqdm
+
+from torch.utils.data import DataLoader
+from utils.dataset_utils import TestDataset, checkout
+from utils.visualization_utils import plot_scatter
 from option import options as opt
 
-depths = 12
-num_bands = 5
-wised_batch = len(opt.de_type)
-heads = 12
+from net.model import AirNet
 
-lamb_k = np.zeros((depths, num_bands, wised_batch, heads))
-lamb_q = np.zeros((depths, num_bands, wised_batch, heads))
+if __name__ == '__main__':
+    opt.output_path = 'output/h__cuda_0_frequency_decompose_type_DC_degradation_embedding_method_None_embed_dim_14_de_type_denoising_50_test_de_type_denoising_bsd68_50_epochs_encoder_0_epochs_300/'
+    opt.ckpt_path = opt.output_path + 'ckpt/'
+    opt.frequency_decompose_type = 'DC'
+    opt.degradation_embedding_method = ['None']
+    opt.batch_size = 1
+    opt.encoder_dim = 256
+    opt.epochs = 300
+    opt.embed_dim = 14
+    torch.cuda.set_device(0)
+    
+    # Make network
+    net = AirNet(opt).cuda()
+    net.eval()
+    net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_%s.pth'%str(opt.epochs), map_location=torch.device(opt.cuda)))
 
-k_file_name = 'lamb_k.log'
-q_file_name = 'lamb_q.log'
-
-k_file = open(os.path.join(opt.output_path, k_file_name), 'r')
-q_file = open(os.path.join(opt.output_path, q_file_name), 'r')
-
-k_lines = k_file.readlines()[-depths:]
-q_lines = q_file.readlines()[-depths:]
-
-k_file.close()
-q_file.close()
-
-for idx in range(depths):
-    strings_k = re.split(',', k_lines[idx].strip())
-    strings_q = re.split(',', q_lines[idx].strip())
-    iterator = 0
-    for i in range(num_bands):
-        for j in range(wised_batch):
-            for k in range(heads):
-                lamb_k[idx][i][j][k] = float(strings_k[iterator].replace('[', '').replace(']', '').replace(' ', ''))
-                lamb_q[idx][i][j][k] = float(strings_q[iterator].replace('[', '').replace(']', '').replace(' ', ''))
-                iterator = iterator + 1
+    band_0 = []
+    band_1 = []
+    
+    for param, weight in net.R.R.named_parameters():
+        if 'lamb' in param and ('bottleneck_1' in param):
+            print(param)
+            # band_0.append(np.mean(weight[0, 0, :].tolist()))
+            # band_1.append(np.mean(weight[0, 0, :].tolist()))
+            # band_0.extend(weight[0, 0, :].tolist())
+            band_1.extend(weight[0, 0, :].tolist())
+            
+    # print(
+    #         '(%s) LFC average weight: %0.4f HFC average weight: %0.4f\n' % (
+    #             opt.de_type, np.mean(band_0), np.mean(band_1),
+    #         ), '\r', end='')
+    print(np.mean(band_1))        
+    
+    # lamb_k = np.mean(lamb_k, axis=3)
+    # lamb_k = np.mean(lamb_k, axis=0)
+    # lamb_k = np.transpose(lamb_k, (1, 0)) # [wised_batch, num_bands]
         
-lamb_k = np.mean(lamb_k, axis=3)
-lamb_k = np.mean(lamb_k, axis=0)
-lamb_k = np.transpose(lamb_k, (1, 0)) # [wised_batch, num_bands]
-
-lamb_q = np.mean(lamb_q, axis=3)
-lamb_q = np.mean(lamb_q, axis=0)
-lamb_q = np.transpose(lamb_q, (1, 0)) # [wised_batch, num_bands]
-    
-plot_curve(lamb_k, 
-        ylim=(-1, 1),
-        labels=('denoising_15', 'denoising_25', 'denoising_50', 'deraining'), 
-        xlabel='Frequency Bands', 
-        ylabel='Lamb', 
-        save_path=os.path.join(opt.output_path, 'lamb_k_curve.png'))     
- 
-plot_curve(lamb_q, 
-        ylim=(-1, 1),
-        labels=('denoising_15', 'denoising_25', 'denoising_50', 'deraining'), 
-        xlabel='Frequency Bands', 
-        ylabel='Lamb', 
-        save_path=os.path.join(opt.output_path, 'lamb_q_curve.png'))         
-    
+    # plot_curve(lamb_k, 
+    #         ylim=(-1, 1),
+    #         labels=('denoising_15', 'denoising_25', 'denoising_50', 'deraining'), 
+    #         xlabel='Frequency Bands', 
+    #         ylabel='Lamb', 
+    #         save_path=os.path.join(opt.output_path, 'lamb_k_curve.png'))     
 
