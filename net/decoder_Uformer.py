@@ -1082,7 +1082,7 @@ class UformerDecoder(nn.Module):
         # Output Projection
         y = self.output_proj(fea)
         if self.debug_mode:
-            return (x + y if self.in_chans ==3 else y), visual_freq
+            return (x + y if self.in_chans ==3 else y), visual_freqs
         else:
             return x + y if self.in_chans ==3 else y
 

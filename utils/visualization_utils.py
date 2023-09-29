@@ -13,15 +13,15 @@ import os
 import matplotlib.pyplot as plt
 
 
-def get_image_grid(images_np, nrow=8):
+def get_image_grid(images_np, nrow=8, padding=2):
     '''Creates a grid from a list of images by concatenating them.'''
     images_torch = [torch.from_numpy(x) for x in images_np]
-    torch_grid = torchvision.utils.make_grid(images_torch, nrow)
+    torch_grid = torchvision.utils.make_grid(images_torch, nrow, padding=padding)
     
     return torch_grid.numpy()
 
 
-def plot_image_grid(images_np, nrow=8, factor=1, dpi=100, interpolation='lanczos', plot=False, title='default', save_path='default'):
+def plot_image_grid(images_np, nrow=8, padding=2, factor=1, dpi=100, interpolation='lanczos', plot=False, title='default', save_path='default'):
     """Draws images in a grid
     
     Args:
@@ -35,7 +35,7 @@ def plot_image_grid(images_np, nrow=8, factor=1, dpi=100, interpolation='lanczos
     
     images_np = [x if (x.shape[0] == n_channels) else np.concatenate([x, x, x], axis=0) for x in images_np]
 
-    grid = get_image_grid(images_np, nrow)
+    grid = get_image_grid(images_np, nrow, padding)
     
     plt.figure(figsize=(len(images_np) + factor, 2 + factor))
     

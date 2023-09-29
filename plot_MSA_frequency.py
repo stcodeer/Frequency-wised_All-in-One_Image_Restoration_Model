@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from utils.dataset_utils import TestDataset, checkout
 from utils.val_utils import AverageMeter, compute_psnr_ssim
 from utils.image_io import save_image_tensor
+from utils.visualization_utils import plot_image_grid
 
 from net.model import AirNet
 
@@ -27,20 +28,20 @@ def plot_by_task(net, task, epochs):
             
             degrad_patch, clean_patch = degrad_patch.cuda(), clean_patch.cuda()
             
-            restored, visual_freqs = net.R(x_query=degrad_patch, inter=None)
+            restored, visual_freqs = net.R(x_query=degrad_patch, inter=[0, 0, 0, 0, 0, [0, 0, 0, 0, 0]])
             
             return visual_freqs
 
 opt.cuda = 0
-opt.output_path = '/'
+opt.output_path = 'output/h__cuda_0_degradation_embedding_method_None_de_type_denoising_15_test_de_type_denoising_bsd68_15_epochs_encoder_0_epochs_300/'
 opt.ckpt_path = opt.output_path + 'ckpt/'
 opt.de_type = ['denoising_15']
 opt.test_de_type = ['denoising_bsd68_15']
-opt.frequency_decompose_type = 'DC'
+# opt.frequency_decompose_type = 'DC'
 opt.degradation_embedding_method = ['None']
 opt.batch_size = 1
 opt.encoder_dim = 256
-opt.encoder_dim = 56
+opt.embed_dim = 56
 opt.epochs = 300
 
 opt.debug_mode = True
@@ -57,7 +58,19 @@ net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_%s.pth'%str(opt.epochs), m
 x = []
 y = []
 
+checkout('output_img')
+checkout('output_img/msa_denoising_15/')
+
 for task in opt.test_de_type:
     visual_freqs = plot_by_task(net, task=task, epochs=opt.epochs)
     
-    print(visual_freqs)
+    print(len(visual_freqs))
+    
+    for i, v1 in enumerate(visual_freqs):
+        for j, v in enumerate(v1):
+            print(i, j, v[0].shape, v[1].shape)
+            before_msa = v[0].cpu().numpy()
+            after_msa = v[1].cpu().numpy()
+            before_msa = np.expand_dims(before_msa, 0)
+            after_msa = np.expand_dims(after_msa, 0)
+            plot_image_grid([np.log10(before_msa), np.log10(after_msa)], padding=0, factor=0, title='layer_%d block_%d'%(i, j), save_path='output_img/msa_denoising_15/layer_%d_block_%d'%(i, j))

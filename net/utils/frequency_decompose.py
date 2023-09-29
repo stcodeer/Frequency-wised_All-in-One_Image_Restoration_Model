@@ -51,13 +51,14 @@ class FrequencyDecompose(nn.Module):
             
             decomposed_fre_x = mask_now.repeat(B, C, 1, 1) * fre_x # [B, C, N, N]
             
-            decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
             
             if self.inverse == 'visual':
                 decomposed_fre_x = torch.abs(decomposed_fre_x)
             elif self.inverse == True:
+                decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
                 decomposed_fre_x = torch.fft.ifft2(decomposed_fre_x).real
             elif self.inverse == False:
+                decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
                 decomposed_fre_x = torch.stack((decomposed_fre_x.real, decomposed_fre_x.imag), -1)
             else:
                 assert False
