@@ -17,14 +17,14 @@ from option import options as opt
 from net.model import AirNet
 
 if __name__ == '__main__':
-    opt.output_path = 'output/h__cuda_0_frequency_decompose_type_DC_degradation_embedding_method_None_embed_dim_14_de_type_denoising_50_test_de_type_denoising_bsd68_50_epochs_encoder_0_epochs_300/'
+    opt.output_path = 'output/2layer_lowhigh_patchwise_num_frequency_bands_l1_1_frequency_decompose_type_5_bands_degradation_embedding_method_None_de_type_denoising_75_test_de_type_denoising_bsd68_75_epochs_encoder_0_epochs_300/'
     opt.ckpt_path = opt.output_path + 'ckpt/'
-    opt.frequency_decompose_type = 'DC'
+    opt.frequency_decompose_type = '5_bands'
     opt.degradation_embedding_method = ['None']
     opt.batch_size = 1
     opt.encoder_dim = 256
     opt.epochs = 300
-    opt.embed_dim = 14
+    opt.embed_dim = 56
     torch.cuda.set_device(0)
     
     # Make network
@@ -32,22 +32,21 @@ if __name__ == '__main__':
     net.eval()
     net.load_state_dict(torch.load(opt.ckpt_path + 'epoch_%s.pth'%str(opt.epochs), map_location=torch.device(opt.cuda)))
 
-    band_0 = []
-    band_1 = []
+    num_bands = 5
+
+    bands = []
+    for i in range(num_bands):
+        bands.append([])
     
     for param, weight in net.R.R.named_parameters():
-        if 'lamb' in param and ('bottleneck_1' in param):
+        if 'lamb' in param:
             print(param)
-            # band_0.append(np.mean(weight[0, 0, :].tolist()))
-            # band_1.append(np.mean(weight[0, 0, :].tolist()))
-            # band_0.extend(weight[0, 0, :].tolist())
-            band_1.extend(weight[0, 0, :].tolist())
-            
-    # print(
-    #         '(%s) LFC average weight: %0.4f HFC average weight: %0.4f\n' % (
-    #             opt.de_type, np.mean(band_0), np.mean(band_1),
-    #         ), '\r', end='')
-    print(np.mean(band_1))        
+            for i in range(num_bands):
+                bands[i].append(np.mean(weight[i, :, :].tolist()))
+                # bands[i].extend(weight[i, :, :].tolist())
+        
+    for i in range(num_bands):
+        print('%.2f'%(np.mean(bands[i])*100))
     
     # lamb_k = np.mean(lamb_k, axis=3)
     # lamb_k = np.mean(lamb_k, axis=0)
