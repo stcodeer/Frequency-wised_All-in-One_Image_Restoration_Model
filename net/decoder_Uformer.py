@@ -126,7 +126,7 @@ class LinearProjection(nn.Module):
 
 
 class WindowAttention(nn.Module):
-    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+    def __init__(self, input_resolution, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
                  frequency_decompose_type=None,
                  degradation_dim=-1,
                  degradation_embedding_method=[]):
@@ -135,6 +135,8 @@ class WindowAttention(nn.Module):
         warnings.filterwarnings('ignore')
 
         super().__init__()
+        self.input_resolution = input_resolution
+        self.num_win = input_resolution[0] // win_size[0] * input_resolution[1] // win_size[1]
         self.dim = dim
         self.win_size = win_size  # Wh, Ww
         self.num_heads = num_heads
@@ -146,13 +148,14 @@ class WindowAttention(nn.Module):
         if not frequency_decompose_type == None:
             if frequency_decompose_type.split('_')[-1] == 'bands':
                 self.num_bands = int(frequency_decompose_type.split('_')[0])
-                self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, head_dim, head_dim)
+                self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
             
             elif frequency_decompose_type == 'DC':
                 self.num_bands = 2
-                self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, head_dim, head_dim)
+                self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
             
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands - 1, 1, num_heads))
+            self.lamb = nn.Parameter(torch.zeros(self.num_bands, self.num_win, num_heads))
+            # self.lamb = nn.Parameter(torch.zeros(self.num_bands - 1, 1, num_heads))
         
 
         # define a parameter table of relative position bias
@@ -227,8 +230,10 @@ class WindowAttention(nn.Module):
             # B, num_winH, num_winW = B.view(-1, H//win_size, W//win_size)
             
             # assert torch.all(torch.abs(attn - torch.sum(attn_bands, dim=0)) < 1e-5), 'oops'
-            
-            attn_bands = attn_bands[1:] * self.lamb[:, :, :, None, None]
+            # attn_bands = attn_bands.view(attn_bands.shape[0], 10, -1, attn_bands.shape[2], attn_bands.shape[3], attn_bands.shape[4]) * self.lamb[:, None, :, :, None, None]
+            # attn_bands = attn_bands.view(attn_bands.shape[0], -1, attn_bands.shape[3], attn_bands.shape[4], attn_bands.shape[5])
+            attn_bands = attn_bands * self.lamb[:, :, :, None, None]
+            # attn_bands = attn_bands[1:] * self.lamb[:, :, :, None, None]
             
             attn = attn + torch.sum(attn_bands, dim=0)
 
@@ -512,8 +517,8 @@ class LeWinTransformerBlock(nn.Module):
                 nn.LeakyReLU(0.1, True),
             )
             
-        self.attn = WindowAttention(
-            dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
+        self.attn = WindowAttention(input_resolution=input_resolution,
+            dim=dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
             token_projection=token_projection,
             frequency_decompose_type=frequency_decompose_type,
