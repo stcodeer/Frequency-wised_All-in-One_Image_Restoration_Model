@@ -128,6 +128,7 @@ class LinearProjection(nn.Module):
 class WindowAttention(nn.Module):
     def __init__(self, input_resolution, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
                  frequency_decompose_type=None,
+                 all_degradation_embedding_method=[],
                  degradation_dim=-1,
                  degradation_embedding_method=[]):
         
@@ -145,6 +146,8 @@ class WindowAttention(nn.Module):
         
         self.frequency_decompose_type = frequency_decompose_type
         
+        self.all_degradation_embedding_method = all_degradation_embedding_method
+        
         if not frequency_decompose_type == None:
             if frequency_decompose_type.split('_')[-1] == 'bands':
                 self.num_bands = int(frequency_decompose_type.split('_')[0])
@@ -154,9 +157,34 @@ class WindowAttention(nn.Module):
                 self.num_bands = 2
                 self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
             
-            self.lamb = nn.Parameter(torch.zeros(self.num_bands, self.num_win, num_heads))
-            # self.lamb = nn.Parameter(torch.zeros(self.num_bands - 1, 1, num_heads))
-        
+            # self.lamb = nn.Parameter(torch.zeros(self.num_bands, self.num_win, num_heads))
+            self.lamb = nn.Parameter(torch.zeros(self.num_bands - 1, 1, num_heads))
+        elif len(all_degradation_embedding_method) > 0:
+            for type in all_degradation_embedding_method:
+                if type.split('_')[-1] == 'bands':
+                    assert False
+                    self.num_bands = int(type.split('_')[-2])
+                    self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
+                
+                elif type.split('_')[-1] == 'DC':
+                    self.num_bands = 2
+                    self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
+                    
+            embed_dim = 56
+            
+            self.mlp_head = nn.Sequential(
+                nn.LayerNorm(embed_dim * 16),
+                nn.Linear(embed_dim * 16, num_heads),
+            )
+            
+            self.avg = nn.AdaptiveAvgPool1d(1)
+            
+            self.mlp = nn.Sequential(
+                nn.Linear(num_heads, num_heads),
+                nn.LeakyReLU(0.1, True),
+                nn.Linear(num_heads, num_heads),
+            )
+                
 
         # define a parameter table of relative position bias
         self.relative_position_bias_table = nn.Parameter(
@@ -197,7 +225,7 @@ class WindowAttention(nn.Module):
 
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, attn_kv=None, mask=None):
+    def forward(self, x, attn_kv=None, all_inter=None, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -232,11 +260,23 @@ class WindowAttention(nn.Module):
             # assert torch.all(torch.abs(attn - torch.sum(attn_bands, dim=0)) < 1e-5), 'oops'
             # attn_bands = attn_bands.view(attn_bands.shape[0], 10, -1, attn_bands.shape[2], attn_bands.shape[3], attn_bands.shape[4]) * self.lamb[:, None, :, :, None, None]
             # attn_bands = attn_bands.view(attn_bands.shape[0], -1, attn_bands.shape[3], attn_bands.shape[4], attn_bands.shape[5])
-            attn_bands = attn_bands * self.lamb[:, :, :, None, None]
-            # attn_bands = attn_bands[1:] * self.lamb[:, :, :, None, None]
+            # attn_bands = attn_bands * self.lamb[:, :, :, None, None]
+            attn_bands = attn_bands[1:] * self.lamb[:, :, :, None, None]
             
             attn = attn + torch.sum(attn_bands, dim=0)
+        elif len(self.all_degradation_embedding_method) > 0:
+            attn_bands = self.decompose(attn) # [num_bands, B, num_heads, N, N]
+            embed_lamb = self.mlp_head(all_inter)
+            embed_lamb = embed_lamb.permute(0, 2, 1)
+            embed_lamb = self.avg(embed_lamb)
+            embed_lamb = embed_lamb.permute(0, 2, 1)
+            attn_bands = attn_bands.view(attn_bands.shape[0], -1, self.num_win, attn_bands.shape[2], attn_bands.shape[3], attn_bands.shape[4])
+            attn_bands = attn_bands[1:] * embed_lamb[None, :, :, :, None, None]
+            attn_bands = attn_bands.view(attn_bands.shape[0], -1, attn_bands.shape[3], attn_bands.shape[4], attn_bands.shape[5])
 
+            attn = attn + torch.sum(attn_bands, dim=0)
+            
+            
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
@@ -453,6 +493,7 @@ class LeWinTransformerBlock(nn.Module):
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
                  modulator=False,cross_modulator=False,
                  frequency_decompose_type=None,
+                 all_degradation_embedding_method=[],
                  degradation_dim=-1,
                  degradation_embedding_method=[],
                  debug_mode=False):
@@ -522,6 +563,7 @@ class LeWinTransformerBlock(nn.Module):
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
             token_projection=token_projection,
             frequency_decompose_type=frequency_decompose_type,
+            all_degradation_embedding_method=all_degradation_embedding_method,
             degradation_dim=degradation_dim,
             degradation_embedding_method=degradation_embedding_method)
 
@@ -558,7 +600,7 @@ class LeWinTransformerBlock(nn.Module):
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"win_size={self.win_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio},modulator={self.modulator}"
 
-    def forward(self, x, inter=None, inter_kv=None, mask=None):
+    def forward(self, x, inter=None, inter_kv=None, all_inter=None, mask=None):
         B, L, C = x.shape
         H = int(math.sqrt(L))
         W = int(math.sqrt(L))
@@ -654,11 +696,11 @@ class LeWinTransformerBlock(nn.Module):
             attn_inter = attn_inter.view(B, H, W, self.degradation_dim)
             attn_inter_windows = window_partition(attn_inter, self.win_size)
             attn_inter_windows = attn_inter_windows.view(-1, self.win_size * self.win_size, self.degradation_dim)
-            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, mask=attn_mask)
+            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, all_inter=all_inter, mask=attn_mask)
         elif 'attention_kv' in self.degradation_embedding_method:
-            attn_windows = self.attn(wmsa_in, attn_kv=inter_kv, mask=attn_mask)
+            attn_windows = self.attn(wmsa_in, attn_kv=inter_kv, all_inter=all_inter, mask=attn_mask)
         else:
-            attn_windows = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
+            attn_windows = self.attn(wmsa_in, all_inter=all_inter, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -708,6 +750,7 @@ class BasicUformerLayer(nn.Module):
                  token_projection='linear',token_mlp='ffn', shift_flag=True,
                  modulator=False,cross_modulator=False,
                  frequency_decompose_type=None,
+                 all_degradation_embedding_method=[],
                  degradation_dim=-1,
                  degradation_embedding_method=[],
                  debug_mode=False):
@@ -733,6 +776,7 @@ class BasicUformerLayer(nn.Module):
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
                                     frequency_decompose_type=frequency_decompose_type,
+                                    all_degradation_embedding_method=all_degradation_embedding_method,
                                     degradation_dim=degradation_dim,
                                     degradation_embedding_method=degradation_embedding_method,
                                     debug_mode=debug_mode)
@@ -749,6 +793,7 @@ class BasicUformerLayer(nn.Module):
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
                                     frequency_decompose_type=frequency_decompose_type,
+                                    all_degradation_embedding_method=all_degradation_embedding_method,
                                     degradation_dim=degradation_dim,
                                     degradation_embedding_method=degradation_embedding_method,
                                     debug_mode=debug_mode)
@@ -757,7 +802,7 @@ class BasicUformerLayer(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"    
 
-    def forward(self, x, inter=None, inter_kv=None, mask=None):
+    def forward(self, x, inter=None, inter_kv=None, all_inter=None, mask=None):
         visual_freqs = []
         for blk in self.blocks:
             if self.use_checkpoint:
@@ -765,10 +810,10 @@ class BasicUformerLayer(nn.Module):
                 # x = checkpoint.checkpoint(blk, x)
             else:
                 if self.debug_mode:
-                    x, visual_freq = blk(x, inter, inter_kv, mask)
+                    x, visual_freq = blk(x, inter, inter_kv, all_inter, mask)
                     visual_freqs.append(visual_freq)
                 else:
-                    x = blk(x, inter, inter_kv, mask)
+                    x = blk(x, inter, inter_kv, all_inter, mask)
         return x, visual_freqs
 
 
@@ -794,6 +839,11 @@ class UformerDecoder(nn.Module):
             self.frequency_decompose_type = None
         else:
             self.frequency_decompose_type = opt.frequency_decompose_type
+        
+        all_degradation_embedding_method = []
+        for type in opt.degradation_embedding_method:
+            if 'all' in type:
+                all_degradation_embedding_method.append(type)
         
         self.num_enc_layers = len(depths)//2
         self.num_dec_layers = len(depths)//2
@@ -839,6 +889,7 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             debug_mode=self.debug_mode)
         self.dowsample_0 = dowsample(embed_dim, embed_dim*2)
         self.encoderlayer_1 = BasicUformerLayer(dim=embed_dim*2,
@@ -856,6 +907,7 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             debug_mode=self.debug_mode)
         self.dowsample_1 = dowsample(embed_dim*2, embed_dim*4)
         self.encoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
@@ -873,6 +925,7 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             debug_mode=self.debug_mode)
         self.dowsample_2 = dowsample(embed_dim*4, embed_dim*8)
         self.encoderlayer_3 = BasicUformerLayer(dim=embed_dim*8,
@@ -890,6 +943,7 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             debug_mode=self.debug_mode)
         self.dowsample_3 = dowsample(embed_dim*8, embed_dim*16)
 
@@ -909,6 +963,7 @@ class UformerDecoder(nn.Module):
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             debug_mode=self.debug_mode)
         
         self.bottleneck_1 = BasicUformerLayer(dim=embed_dim*16,
@@ -927,6 +982,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             # modulator=modulator,cross_modulator=cross_modulator,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             degradation_dim=embed_dim*16,
                             degradation_embedding_method=opt.degradation_embedding_method,
                             debug_mode=self.debug_mode)
@@ -949,6 +1005,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             degradation_dim=embed_dim*8,
                             degradation_embedding_method=opt.degradation_embedding_method,
                             debug_mode=self.debug_mode)
@@ -969,6 +1026,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             degradation_dim=embed_dim*4,
                             degradation_embedding_method=opt.degradation_embedding_method,
                             debug_mode=self.debug_mode)
@@ -989,6 +1047,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             degradation_dim=embed_dim*2,
                             degradation_embedding_method=opt.degradation_embedding_method,
                             debug_mode=self.debug_mode)
@@ -1009,6 +1068,7 @@ class UformerDecoder(nn.Module):
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
                             modulator=modulator,cross_modulator=cross_modulator,
                             frequency_decompose_type=self.frequency_decompose_type,
+                            all_degradation_embedding_method=all_degradation_embedding_method,
                             degradation_dim=embed_dim,
                             degradation_embedding_method=opt.degradation_embedding_method,
                             debug_mode=self.debug_mode)
@@ -1051,25 +1111,25 @@ class UformerDecoder(nn.Module):
         visual_freqs = []
         
         # Encoder
-        conv0, visual_freq_0 = self.encoderlayer_0(y,mask=mask)
+        conv0, visual_freq_0 = self.encoderlayer_0(y, all_inter=inter[4], mask=mask)
         pool0 = self.dowsample_0(conv0) # B H/2*W/2 embed_dim*2
-        conv1, visual_freq_1 = self.encoderlayer_1(pool0,mask=mask)
+        conv1, visual_freq_1 = self.encoderlayer_1(pool0, all_inter=inter[4], mask=mask)
         pool1 = self.dowsample_1(conv1) # B H/4*W/4 embed_dim*4
-        conv2, visual_freq_2 = self.encoderlayer_2(pool1,mask=mask)
+        conv2, visual_freq_2 = self.encoderlayer_2(pool1, all_inter=inter[4], mask=mask)
         pool2 = self.dowsample_2(conv2) # B H/8*W/8 embed_dim*8
-        conv3, visual_freq_3 = self.encoderlayer_3(pool2,mask=mask)
+        conv3, visual_freq_3 = self.encoderlayer_3(pool2, all_inter=inter[4], mask=mask)
         pool3 = self.dowsample_3(conv3) # B H/16*W/16 embed_dim*16
         
         conv = [conv0, conv1, conv2, conv3]
         
         # Bottleneck
-        conv4, visual_freq_4 = self.bottleneck_0(pool3, mask=mask)
+        conv4, visual_freq_4 = self.bottleneck_0(pool3, all_inter=inter[4], mask=mask)
         
         if 'residual' in self.opt.degradation_embedding_method:
             conv4 = self.degradation_embed[4](torch.cat([inter[4], conv4], -1))
         
         fea = conv4
-        fea, visual_freq_5 = self.bottleneck_1(fea, inter[4], inter[5][4], mask=mask)
+        fea, visual_freq_5 = self.bottleneck_1(fea, inter[4], inter[5][4], all_inter=inter[4], mask=mask)
         
         visual_freqs.extend([visual_freq_0, visual_freq_1, visual_freq_2, visual_freq_3, visual_freq_4, visual_freq_5])
 
@@ -1081,7 +1141,7 @@ class UformerDecoder(nn.Module):
                 conv[i] = self.degradation_embed[i](torch.cat([inter[i], conv[i]], -1))
                 
             fea = torch.cat([fea, conv[i]], -1)
-            fea, visual_freq = self.decoderlayer[i](fea, inter[i], inter[5][i], mask=mask)
+            fea, visual_freq = self.decoderlayer[i](fea, inter[i], inter[5][i], all_inter=inter[4], mask=mask)
             visual_freqs.append(visual_freq)
 
         # Output Projection
@@ -1099,15 +1159,15 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['None']
-    opt.frequency_decompose_type = 'DC'
+    opt.degradation_embedding_method = ['all_DC']
+    opt.frequency_decompose_type = 'none'
     
     model_restoration = UformerDecoder(opt)
     # print(model_restoration)
     
     print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
     
-    B = 1
+    B = 4
     C = 3
     H = W = 128
     embed_dim = 56

@@ -36,7 +36,7 @@ parser.add_argument('--frequency_decompose_type', type=str, default='none',
 parser.add_argument('--debug_mode', type=bool, default=False, help='whether or not to enable debug mode.(only available for Uformer encoder+decoder).')
 parser.add_argument('--embed_dim', type=int, default=56, help='the embedding dimensionality of Uformer(only available for Uformer encoder+decoder).')
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
-                    help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv].(only available for Uformer encoder+decoder).')
+                    help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv, all_%_bands, all_DC].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
 parser.add_argument('--num_frequency_bands', type=int, default=-1, help='the number of frequency bands used in contrast loss in the frequency domain.(only available for Uformer encoder+decoder)')
 parser.add_argument('--num_frequency_bands_l1', type=int, default=-1, help='the number of frequency bands used in l1 loss in the frequency domain.(only available for Uformer encoder+decoder)')
