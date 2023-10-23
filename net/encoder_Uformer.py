@@ -759,6 +759,10 @@ class UformerEncoder(nn.Module):
         embed_dim = opt.embed_dim
         self.img_size = img_size
         
+        if not opt.num_frequency_bands_encoder == -1:
+            self.preprocess_decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands_encoder, img_size, img_size, inverse=False)
+            in_chans = in_chans * 2 * opt.num_frequency_bands_encoder
+        
         self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=out_chans, embed_dim=embed_dim)
         
         self.mlp_head = nn.Sequential(
@@ -799,6 +803,11 @@ class UformerEncoder(nn.Module):
 
     def forward(self, x, mask=None):
         # B C H W
+        
+        if not self.opt.num_frequency_bands_encoder == -1:
+            x = self.preprocess_decompose(x)
+            x = rearrange(x, 'num_bands b c h w k ->  b (num_bands c k) h w') # k = 2 (real, image)
+        
         x, inter = self.uformer(x, mask) # B H/16*W/16 embed_dim*16
         
         fea = self.mlp_head(x)
