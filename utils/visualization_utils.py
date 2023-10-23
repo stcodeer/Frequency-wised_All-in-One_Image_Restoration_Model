@@ -121,7 +121,8 @@ def plot_curve(f, x_range=None, labels=None, xlabel=None, ylabel=None, ylim=(0, 
     if x_range == None:
         x_range = (0, len(f[0]))
     ax.set_xlim(0, x_range[1])
-    ax.set_ylim(ylim[0], ylim[1])
+    if not ylim == None:
+        ax.set_ylim(ylim[0], ylim[1])
     
     if not xlabel == None:
         ax.set_xlabel(xlabel)

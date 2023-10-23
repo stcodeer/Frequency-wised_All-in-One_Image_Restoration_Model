@@ -8,7 +8,7 @@ parser.add_argument('--cuda', type=int, default=0)
 parser.add_argument('--epochs', type=int, default=1000, help='maximum number of epochs to train the total model.')
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
-parser.add_argument('--contrast_loss_weight', nargs='+', type=float, default=[0.1, 0.2], help='contrast loss weight in objective function.')
+parser.add_argument('--contrast_loss_weight', nargs='+', type=float, default=[0.1, 0.1], help='contrast loss weight in objective function.')
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
