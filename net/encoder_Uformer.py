@@ -586,7 +586,7 @@ class BasicUformerLayer(nn.Module):
 
 class Uformer(nn.Module):
     def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
-                 depths=[2, 2, 8, 8, 2, 8, 8, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+                 depths=[2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -596,7 +596,7 @@ class Uformer(nn.Module):
         super().__init__()
         
         self.opt = opt
-        embed_dim = opt.embed_dim
+        embed_dim = opt.encoder_embed_dim
         
         need_kv = 'attention_kv' in opt.degradation_embedding_method
         
@@ -748,7 +748,7 @@ class Uformer(nn.Module):
         # Bottleneck
         conv4, K4, V4 = self.conv(pool3, mask=mask)
 
-        return conv4, [conv0, conv1, conv2, conv3, conv4, [[K0, V0], [K1, V1], [K2, V2], [K3, V3], [K4, V4]]]
+        return conv4 # , [conv0, conv1, conv2, conv3, conv4, [[K0, V0], [K1, V1], [K2, V2], [K3, V3], [K4, V4]]]
 
 
 class UformerEncoder(nn.Module):
@@ -756,92 +756,61 @@ class UformerEncoder(nn.Module):
         super().__init__()
         
         self.opt = opt
-        embed_dim = opt.embed_dim
+        embed_dim = opt.encoder_embed_dim
         self.img_size = img_size
         
-        if not opt.num_frequency_bands_encoder == -1:
-            self.preprocess_decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands_encoder, img_size, img_size, inverse=False)
-            in_chans = in_chans * 2 * opt.num_frequency_bands_encoder
+        if not opt.L == 1:
+            self.preprocess_decompose = FrequencyDecompose('frequency_decompose_1', 1./(opt.L-1), img_size, img_size, inverse=False)
+            in_chans = in_chans * 2
         
-        self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=out_chans, embed_dim=embed_dim)
+        self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=None, embed_dim=embed_dim)
         
-        self.mlp_head = nn.Sequential(
+        self.mlp_head = nn.ModuleList([nn.Sequential(
             nn.LayerNorm(embed_dim * 16),
             nn.Linear(embed_dim * 16, opt.encoder_dim * 16 * 16)
-        )
+        ) for i in range(opt.L)])
         
-        self.norm = nn.Sequential(
+        self.norm = nn.ModuleList([nn.Sequential(
             nn.BatchNorm2d(opt.encoder_dim),
             nn.LeakyReLU(0.1, True),
-        )
+        ) for i in range(opt.L)])
         
-        self.avg = nn.AdaptiveAvgPool2d(1)
+        self.avg = nn.ModuleList([nn.AdaptiveAvgPool2d(1) 
+                    for i in range(opt.L)])
         
-        self.mlp = nn.Sequential(
+        self.mlp = nn.ModuleList([nn.Sequential(
             nn.Linear(opt.encoder_dim, opt.encoder_dim),
             nn.LeakyReLU(0.1, True),
             nn.Linear(opt.encoder_dim, opt.encoder_dim),
-        )
-        
-        # frequency domain
-        if not self.opt.num_frequency_bands == -1:
-            self.decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands, img_size, img_size, inverse=False)
-            self.freq_linear = nn.ModuleList()
-            self.freq_avg = nn.ModuleList()
-            self.freq_mlp = nn.ModuleList()
-            for i in range(opt.num_frequency_bands):
-                self.freq_linear.append(nn.Linear(opt.encoder_dim * 2, opt.encoder_dim))
-                self.freq_avg.append(nn.AdaptiveAvgPool2d(1))
-                self.freq_mlp.append(nn.Sequential(
-                    nn.Linear(opt.encoder_dim, opt.encoder_dim),
-                    nn.LeakyReLU(0.1, True),
-                    nn.Linear(opt.encoder_dim, opt.encoder_dim),
-                ))
-        
-        if 'norm' in self.opt.frequency_feature_enhancement_method:
-            self.freq_norm = nn.LayerNorm([opt.encoder_dim * 2, img_size, img_size])
+        ) for i in range(opt.L)])
 
     def forward(self, x, mask=None):
-        # B C H W
+        # B C=3 H W
+        B = x.shape[0]
         
-        if not self.opt.num_frequency_bands_encoder == -1:
-            x = self.preprocess_decompose(x)
-            x = rearrange(x, 'num_bands b c h w k ->  b (num_bands c k) h w') # k = 2 (real, image)
+        if not self.opt.L == 1:
+            x = self.preprocess_decompose(x) # b c h w -> l b c h w k=2(real, image)
+            x = rearrange(x, 'l b c h w k ->  (l b) (c k) h w')
         
-        x, inter = self.uformer(x, mask) # B H/16*W/16 embed_dim*16
+        x = self.uformer(x, mask) # L*B H/16*W/16 embed_dim*16
+        x = rearrange(x, '(l b) hw c ->  l b hw c', l=self.opt.L, b=B)
+        x = torch.unbind(x, 0)
+        inter = x
         
-        fea = self.mlp_head(x)
+        out = []
         
-        fea = fea.reshape(fea.shape[0], self.opt.encoder_dim, self.img_size, self.img_size)
-        
-        fea = self.norm(fea)
-        
-        freq_out = []
-        
-        if not self.opt.num_frequency_bands == -1:
-            combined_freq_fea = self.decompose(fea)
-            combined_freq_fea = rearrange(combined_freq_fea, 'num_bands b c h w k -> num_bands b (c k) h w') # k = 2 (real, image)
+        for i in range(self.opt.L):
+            fea = self.mlp_head[i](x[i])
             
-            if 'norm' in self.opt.frequency_feature_enhancement_method:
-                combined_freq_fea = self.freq_norm(combined_freq_fea)
-                
-            combined_freq_fea = [*torch.unbind(combined_freq_fea, 0)]
+            fea = fea.reshape(fea.shape[0], self.opt.encoder_dim, self.img_size, self.img_size)
             
-            freq_fea = combined_freq_fea
-            for i in range(self.opt.num_frequency_bands):
-                freq_fea[i] = freq_fea[i].permute(0, 2, 3, 1)
-                freq_fea[i] = self.freq_linear[i](freq_fea[i])
-                freq_fea[i] = freq_fea[i].permute(0, 3, 1, 2)
-                
-                freq_fea[i] = self.freq_avg[i](freq_fea[i]).squeeze(-1).squeeze(-1)
-                
-                freq_out.append(self.freq_mlp[i](freq_fea[i]))
-                
-        fea = self.avg(fea).squeeze(-1).squeeze(-1)
-        
-        out = self.mlp(fea) # B self.encoder_dim
+            fea = self.norm[i](fea)
+                    
+            fea = self.avg[i](fea).squeeze(-1).squeeze(-1)
+            
+            out.append(self.mlp[i](fea)) # B self.encoder_dim
 
-        return fea, [out, *freq_out], inter
+        return None, out, inter
 
 
 if __name__ == "__main__":
@@ -852,8 +821,8 @@ if __name__ == "__main__":
     sys.path.append(os.path.abspath(p))
     from option import options as opt
     
-    opt.degradation_embedding_method = ['attention_kv']
-    opt.num_frequency_bands = 5
+    opt.degradation_embedding_method = ['all_3_bands']
+    opt.num_frequency_bands = 3
     
     model_restoration = UformerEncoder(opt)
     # print(model_restoration)

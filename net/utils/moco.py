@@ -17,10 +17,7 @@ class MoCo(nn.Module):
         """
         super(MoCo, self).__init__()
         
-        if opt.num_frequency_bands == -1:
-            self.num_losses = 1
-        else:
-            self.num_losses = opt.num_frequency_bands + 1
+        self.num_losses = opt.L
 
         self.opt = opt
 

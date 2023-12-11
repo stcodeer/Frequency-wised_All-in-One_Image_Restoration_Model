@@ -13,7 +13,7 @@ class FrequencyDecompose(nn.Module):
         
         assert size > 0 and size <= 1, 'invalid frequency band width(size=%s)'%(size)
         
-        if self.type == 'frequency_decompose':
+        if self.type in ['frequency_decompose', 'frequency_decompose_1']:
             self.Y = torch.arange(h).unsqueeze(1).cuda()
             self.X = torch.arange(w).unsqueeze(0).cuda()
             
@@ -25,7 +25,7 @@ class FrequencyDecompose(nn.Module):
             
             self.max_radius = torch.sqrt(center[0] ** 2 + center[1] ** 2) # center[0]
         
-    def frequency_decompose(self, x):
+    def frequency_decompose(self, x): # [0, 0.2) [0.2, 0.4) [0.4, 0.6) [0.6, 0.8) [0.8, 1]
         # B, nH, N, N
         B, C = x.shape[0], x.shape[1]
 
@@ -67,6 +67,45 @@ class FrequencyDecompose(nn.Module):
         
         return torch.concat(decomposed_x, dim=0)
 
+    def frequency_decompose_1(self, x): # 0 (0, 0.2] (0.2, 0.4] (0.4, 0.6] (0.6, 0.8] (0.8, 1]
+        # B, nH, N, N
+        B, C = x.shape[0], x.shape[1]
+
+        fre_x = torch.fft.fftshift(torch.fft.fft2(x)) # [B, C, N, N]
+        
+        last_mask = torch.zeros((self.h, self.w), dtype=bool).cuda()
+        
+        decomposed_x = []
+        
+        for sz in torch.linspace(0, 1, self.num_bands + 1):
+            radius = self.max_radius * sz
+            
+            mask = self.dist_from_center <= radius
+                
+            mask_now = mask ^ last_mask # [N, N]
+            
+            last_mask = mask
+            
+            mask_now = mask_now.unsqueeze(0).unsqueeze(0) # [1, 1, N, N]
+            
+            decomposed_fre_x = mask_now.repeat(B, C, 1, 1) * fre_x # [B, C, N, N]
+            
+            
+            if self.inverse == 'visual':
+                decomposed_fre_x = torch.abs(decomposed_fre_x)
+            elif self.inverse == True:
+                decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
+                decomposed_fre_x = torch.fft.ifft2(decomposed_fre_x).real
+            elif self.inverse == False:
+                decomposed_fre_x = torch.fft.ifftshift(decomposed_fre_x)
+                decomposed_fre_x = torch.stack((decomposed_fre_x.real, decomposed_fre_x.imag), -1)
+            else:
+                assert False
+            
+            decomposed_x.append(decomposed_fre_x.unsqueeze(0))
+        
+        return torch.concat(decomposed_x, dim=0)
+    
     def frequency_decompose_dc(self, x):
         # B, nH, N, N
         N = x.shape[2]
@@ -81,5 +120,7 @@ class FrequencyDecompose(nn.Module):
     def forward(self, x):
         if self.type == 'frequency_decompose':
             return self.frequency_decompose(x)
+        elif self.type == 'frequency_decompose_1':
+            return self.frequency_decompose_1(x)
         else:
             return self.frequency_decompose_dc(x)

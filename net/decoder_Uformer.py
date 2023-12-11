@@ -130,7 +130,8 @@ class WindowAttention(nn.Module):
                  frequency_decompose_type=None,
                  all_degradation_embedding_method=[],
                  degradation_dim=-1,
-                 degradation_embedding_method=[]):
+                 degradation_embedding_method=[],
+                 debug_mode=False):
         
         import warnings
         warnings.filterwarnings('ignore')
@@ -148,7 +149,10 @@ class WindowAttention(nn.Module):
         
         self.all_degradation_embedding_method = all_degradation_embedding_method
         
+        self.debug_mode = debug_mode
+        
         if not frequency_decompose_type == None:
+            assert False
             if frequency_decompose_type.split('_')[-1] == 'bands':
                 self.num_bands = int(frequency_decompose_type.split('_')[0])
                 self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
@@ -162,28 +166,31 @@ class WindowAttention(nn.Module):
         elif len(all_degradation_embedding_method) > 0:
             for type in all_degradation_embedding_method:
                 if type.split('_')[-1] == 'bands':
-                    assert False
                     self.num_bands = int(type.split('_')[-2])
-                    self.decompose = FrequencyDecompose('frequency_decompose', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
+                    self.decompose = FrequencyDecompose('frequency_decompose_1', 1./(self.num_bands-1), win_size[0]*win_size[1], win_size[0]*win_size[1])
                 
                 elif type.split('_')[-1] == 'DC':
                     self.num_bands = 2
                     self.decompose = FrequencyDecompose('frequency_decompose_dc', 1./self.num_bands, win_size[0]*win_size[1], win_size[0]*win_size[1])
                     
-            embed_dim = 56
+            encoder_embed_dim = 28
             
-            self.mlp_head = nn.Sequential(
-                nn.LayerNorm(embed_dim * 16),
-                nn.Linear(embed_dim * 16, num_heads),
-            )
+            self.mlp_head = nn.ModuleList([nn.Sequential(
+                nn.LayerNorm(encoder_embed_dim * 16),
+                nn.Linear(encoder_embed_dim * 16, num_heads))
+                if i > 0 else None
+                for i in range(self.num_bands)])
             
-            self.avg = nn.AdaptiveAvgPool1d(1)
+            self.avg = nn.ModuleList([nn.AdaptiveAvgPool1d(1)
+                        if i > 0 else None
+                        for i in range(self.num_bands)])
             
-            self.mlp = nn.Sequential(
+            self.mlp = nn.ModuleList([nn.Sequential(
                 nn.Linear(num_heads, num_heads),
                 nn.LeakyReLU(0.1, True),
-                nn.Linear(num_heads, num_heads),
-            )
+                nn.Linear(num_heads, num_heads),)
+                if i > 0 else None
+                for i in range(self.num_bands)])
                 
 
         # define a parameter table of relative position bias
@@ -254,6 +261,7 @@ class WindowAttention(nn.Module):
             
         # frequency decompose here
         if not self.frequency_decompose_type == None:
+            assert False
             attn_bands = self.decompose(attn) # [num_bands, B, num_heads, N, N]
             # B, num_winH, num_winW = B.view(-1, H//win_size, W//win_size)
             
@@ -265,16 +273,19 @@ class WindowAttention(nn.Module):
             
             attn = attn + torch.sum(attn_bands, dim=0)
         elif len(self.all_degradation_embedding_method) > 0:
-            attn_bands = self.decompose(attn) # [num_bands, B, num_heads, N, N]
-            embed_lamb = self.mlp_head(all_inter)
-            embed_lamb = embed_lamb.permute(0, 2, 1)
-            embed_lamb = self.avg(embed_lamb)
-            embed_lamb = embed_lamb.permute(0, 2, 1)
-            attn_bands = attn_bands.view(attn_bands.shape[0], -1, self.num_win, attn_bands.shape[2], attn_bands.shape[3], attn_bands.shape[4])
-            attn_bands = attn_bands[1:] * embed_lamb[None, :, :, :, None, None]
-            attn_bands = attn_bands.view(attn_bands.shape[0], -1, attn_bands.shape[3], attn_bands.shape[4], attn_bands.shape[5])
-
-            attn = attn + torch.sum(attn_bands, dim=0)
+            attn_bands = self.decompose(attn) # [num_bands, B*num_win, num_heads, N, N]
+            attn_bands = torch.unbind(attn_bands, 0)
+            
+            for i in range(1, self.num_bands):
+                embed_lamb = self.mlp_head[i](all_inter[i])
+                embed_lamb = embed_lamb.permute(0, 2, 1)
+                embed_lamb = self.avg[i](embed_lamb)
+                embed_lamb = embed_lamb.permute(0, 2, 1)
+                embed_lamb = self.mlp[i](embed_lamb)
+                attn_band = attn_bands[i].view(-1, self.num_win, attn_bands[i].shape[1], attn_bands[i].shape[2], attn_bands[i].shape[3])
+                attn_band = attn_band * embed_lamb[:, :, :, None, None]
+                attn_band = attn_band.view(-1, attn_band.shape[2], attn_band.shape[3], attn_band.shape[4])
+                attn = attn + attn_band
             
             
         attn = self.attn_drop(attn)
@@ -282,7 +293,10 @@ class WindowAttention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        if self.debug_mode and len(self.all_degradation_embedding_method) > 0:
+            return x, embed_lamb
+        else:
+            return x, []
 
     def extra_repr(self) -> str:
         return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
@@ -565,7 +579,8 @@ class LeWinTransformerBlock(nn.Module):
             frequency_decompose_type=frequency_decompose_type,
             all_degradation_embedding_method=all_degradation_embedding_method,
             degradation_dim=degradation_dim,
-            degradation_embedding_method=degradation_embedding_method)
+            degradation_embedding_method=degradation_embedding_method,
+            debug_mode=debug_mode)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
@@ -696,11 +711,11 @@ class LeWinTransformerBlock(nn.Module):
             attn_inter = attn_inter.view(B, H, W, self.degradation_dim)
             attn_inter_windows = window_partition(attn_inter, self.win_size)
             attn_inter_windows = attn_inter_windows.view(-1, self.win_size * self.win_size, self.degradation_dim)
-            attn_windows = self.attn(wmsa_in, attn_kv=attn_inter_windows, all_inter=all_inter, mask=attn_mask)
+            attn_windows, embed_lamb = self.attn(wmsa_in, attn_kv=attn_inter_windows, all_inter=all_inter, mask=attn_mask)
         elif 'attention_kv' in self.degradation_embedding_method:
-            attn_windows = self.attn(wmsa_in, attn_kv=inter_kv, all_inter=all_inter, mask=attn_mask)
+            attn_windows, embed_lamb = self.attn(wmsa_in, attn_kv=inter_kv, all_inter=all_inter, mask=attn_mask)
         else:
-            attn_windows = self.attn(wmsa_in, all_inter=all_inter, mask=attn_mask)  # nW*B, win_size*win_size, C
+            attn_windows, embed_lamb = self.attn(wmsa_in, all_inter=all_inter, mask=attn_mask)  # nW*B, win_size*win_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -736,7 +751,7 @@ class LeWinTransformerBlock(nn.Module):
         x = x + self.drop_path(y)
         del attn_mask
         if self.debug_mode:
-            return x, [visual_freq_before, visual_freq_after]
+            return x, [visual_freq_before, visual_freq_after, embed_lamb]
         else:
             return x
 
@@ -1104,6 +1119,9 @@ class UformerDecoder(nn.Module):
         :param x: feature map: (B, C, H, W)
         :param inter: degradation representation: [(B, H*W, embed_dim), (B, H/2*W/2, embed_dim*2), (B, H/4*W/4, embed_dim*4), (B, H/8*W/8, embed_dim*8), (B, H/16*W/16, embed_dim*16)]
         '''
+        # tmp
+        inter = [None, None, None, None, inter, [None, None, None, None, None]]
+        
         # Input Projection
         y = self.input_proj(x) # B H*W embed_dim
         y = self.pos_drop(y)
@@ -1170,14 +1188,14 @@ if __name__ == "__main__":
     B = 4
     C = 3
     H = W = 128
-    embed_dim = 56
+    encoder_embed_dim = 28
     x = torch.zeros((B, C, H, W))
-    inter = [torch.zeros((B, H*W, embed_dim)), torch.zeros((B, H//2*W//2, embed_dim*2)), torch.zeros((B, H//4*W//4, embed_dim*4)), torch.zeros((B, H//8*W//8, embed_dim*8)), torch.zeros((B, H//16*W//16, embed_dim*16))]
+    inter = [torch.zeros((B, H*W, encoder_embed_dim)), torch.zeros((B, H//2*W//2, encoder_embed_dim*2)), torch.zeros((B, H//4*W//4, encoder_embed_dim*4)), torch.zeros((B, H//8*W//8, encoder_embed_dim*8)), torch.zeros((B, H//16*W//16, encoder_embed_dim*16))]
     
     win_size = 8
     inter_kv = []
     for i in range(5):
-        tmp = torch.zeros(B * H//win_size//(2 ** i) * W//win_size//(2 ** i), 2 ** i, win_size ** 2, embed_dim)
+        tmp = torch.zeros(B * H//win_size//(2 ** i) * W//win_size//(2 ** i), 2 ** i, win_size ** 2, encoder_embed_dim)
         inter_kv.append([tmp, tmp])
     inter.append(inter_kv)
     

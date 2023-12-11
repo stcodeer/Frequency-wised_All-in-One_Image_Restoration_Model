@@ -64,14 +64,7 @@ if __name__ == '__main__':
     CE = nn.CrossEntropyLoss().cuda()
     l1 = nn.L1Loss().cuda()
         
-    if opt.num_frequency_bands == -1:
-        num_losses = 1
-        opt.contrast_loss_weight = opt.contrast_loss_weight[:1]
-    else:
-        num_losses = opt.num_frequency_bands + 1
-        opt.contrast_loss_weight[1] = opt.contrast_loss_weight[1] / (num_losses - 1)
-        for i in range(num_losses-2):
-            opt.contrast_loss_weight.append(opt.contrast_loss_weight[1])
+    num_losses = opt.L
 
     if not opt.num_frequency_bands_l1 == -1:
         decompose = FrequencyDecompose('frequency_decompose', 1./opt.num_frequency_bands_l1, opt.patch_size, opt.patch_size, inverse=False)
@@ -88,15 +81,15 @@ if __name__ == '__main__':
 
                 if epoch < opt.epochs_encoder:
                     _, output, target, _ = net.E(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                    contrast_loss = sum([opt.contrast_loss_weight[i] / opt.contrast_loss_weight[0] * CE(output[i], target[i]) for i in range(num_losses)])
+                    contrast_loss = sum([CE(output[i], target[i]) for i in range(num_losses)]) / num_losses
                     loss = contrast_loss
                 else:
                     restored, output, target = net(x_query=degrad_patch_1, x_key=degrad_patch_2)
-                    contrast_loss = sum([opt.contrast_loss_weight[i] / opt.contrast_loss_weight[0] * CE(output[i], target[i]) for i in range(num_losses)])
+                    contrast_loss = sum([CE(output[i], target[i]) for i in range(num_losses)]) / num_losses
                     l1_loss = l1(restored, clean_patch_1)
                     if not opt.num_frequency_bands_l1 == -1:
-                        l1_loss = l1_loss + 0.1 * l1(decompose(restored), decompose(clean_patch_1))
-                    loss = l1_loss + opt.contrast_loss_weight[0] * contrast_loss
+                        l1_loss = l1_loss + opt.frequency_l1_loss_weight * l1(decompose(restored), decompose(clean_patch_1))
+                    loss = l1_loss + opt.contrast_loss_weight * contrast_loss
 
                 # backward
                 loss.backward()

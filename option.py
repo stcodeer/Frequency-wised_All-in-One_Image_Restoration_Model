@@ -8,7 +8,8 @@ parser.add_argument('--cuda', type=int, default=0)
 parser.add_argument('--epochs', type=int, default=1000, help='maximum number of epochs to train the total model.')
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
-parser.add_argument('--contrast_loss_weight', nargs='+', type=float, default=[0.1, 0.1], help='contrast loss weight in objective function.')
+parser.add_argument('--contrast_loss_weight', type=float, default=0.2, help='contrast loss weight in objective function.')
+parser.add_argument('--frequency_l1_loss_weight', type=float, default=0.1, help='frequency l1 loss weight in objective function.')
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
@@ -34,7 +35,8 @@ parser.add_argument('--frequency_decompose_type', type=str, default='none',
 
 # Uformer encoder+decoder
 parser.add_argument('--debug_mode', type=bool, default=False, help='whether or not to enable debug mode.(only available for Uformer encoder+decoder).')
-parser.add_argument('--embed_dim', type=int, default=56, help='the embedding dimensionality of Uformer(only available for Uformer encoder+decoder).')
+parser.add_argument('--encoder_embed_dim', type=int, default=28, help='the embedding dimensionality of Uformer Encoder(only available for Uformer encoder+decoder).')
+parser.add_argument('--embed_dim', type=int, default=56, help='the embedding dimensionality of Uformer Decoder(only available for Uformer encoder+decoder).')
 parser.add_argument('--degradation_embedding_method', nargs='+', type=str, default=['residual'], 
                     help='degradation embedding method, should be in [residual, modulator, self_modulator, deform_conv, attention_residual, attention_kv, all_%_bands, all_DC].(only available for Uformer encoder+decoder).')
 parser.add_argument('--learnable_modulator', type=bool, default=False, help='add learnable modulator in Uformer decoder.(only available for Uformer encoder+decoder)')
@@ -43,6 +45,9 @@ parser.add_argument('--num_frequency_bands', type=int, default=-1, help='the num
 parser.add_argument('--num_frequency_bands_l1', type=int, default=-1, help='the number of frequency bands used in l1 loss in the frequency domain.(only available for Uformer encoder+decoder)')
 parser.add_argument('--frequency_feature_enhancement_method', nargs='+', type=str, default=[], 
                     help='how feature maps used for calculating frequency domain losses are transformed to enhance contrast in the frequency domain, should be in [norm].(only available for Uformer encoder+decoder)')
+
+parser.add_argument('--L', type=int, default=3, help='number of frequency bands used in attention map frequency modulation.(only available for Uformer encoder+decoder)')
+
 # ViT encoder
 parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
 parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='use batch-wise learnable parameters for frequency decomposition module or not(only available for ViT encoder)')
@@ -53,6 +58,10 @@ options = parser.parse_args()
 if options.de_type[0] == '4tasks':
     options.de_type = ['denoising_15', 'denoising_25', 'denoising_50', 'deraining']
     options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining']
+    
+if options.de_type[0] == '5tasks':
+    options.de_type = ['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing']
+    options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing']
 
 options.batch_size = len(options.de_type)
 
@@ -73,7 +82,7 @@ elif options.encoder_type == 'ViT':
         
     if options.lr == None:
         options.lr = 3e-4
-elif options.encoder_type == 'Uformer':
+elif options.encoder_type in ['Uformer', 'Oformer']:
     
     if options.encoder_dim == None:
         options.encoder_dim = 256
