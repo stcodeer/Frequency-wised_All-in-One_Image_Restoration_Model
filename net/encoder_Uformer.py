@@ -186,6 +186,133 @@ class WindowAttention(nn.Module):
         return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
 
 
+########### intra & inter bands attention ###########
+class FrequencyWindowAttention(nn.Module):
+    def __init__(self, dim, win_size,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 need_kv=False,
+                 type=None, # ['intra', 'inter']
+                 L=3):
+        
+        import warnings
+        warnings.filterwarnings('ignore')
+
+        super().__init__()
+        
+        self.need_kv = need_kv
+        self.L = L
+        
+        self.dim = dim
+        self.win_size = win_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        # define a parameter table of relative position bias
+        self.relative_position_bias_table = nn.ParameterList([nn.Parameter(
+            torch.zeros((2 * win_size[0] - 1) * (2 * win_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+            for i in range(L * L)
+        ])
+
+        # get pair-wise relative position index for each token inside the window
+        coords_h = torch.arange(self.win_size[0]) # [0,...,Wh-1]
+        coords_w = torch.arange(self.win_size[1]) # [0,...,Ww-1]
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += self.win_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += self.win_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.win_size[1] - 1
+        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        self.register_buffer("relative_position_index", relative_position_index)
+        for i in range(L * L):
+            trunc_normal_(self.relative_position_bias_table[i], std=.02)
+            
+        if token_projection =='conv':
+            self.qkv = ConvProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
+        elif token_projection =='linear':
+            self.qkv = LinearProjection(dim,num_heads,dim//num_heads,bias=qkv_bias)
+        else:
+            raise Exception("Projection error!") 
+        
+        self.token_projection = token_projection
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.softmax = nn.Softmax(dim=-1)
+        
+        # mask out for intra & inter bands attention
+        if type == 'intra':
+            mask_freq = torch.tensor([[(float(0.0) if i==j else float(-100.0)) for j in range(L)] for i in range(L)])
+        elif type == 'inter':
+            mask_freq = torch.tensor([[(float(-100.0) if i==j else float(0.0)) for j in range(L)] for i in range(L)])
+        else:
+            assert False, 'Attention type error.'
+        mask_freq = repeat(mask_freq, 'l1 l2 -> (l1 token1) (l2 token2)', token1=win_size[0]*win_size[1], token2=win_size[0]*win_size[1])
+        mask_freq = mask_freq.unsqueeze(0).unsqueeze(0)
+        self.register_buffer("mask_freq", mask_freq)
+
+    def forward(self, x, attn_kv=None, mask=None):
+        B_, N, C = x.shape # (l b nw) token dim
+        q, k, v = self.qkv(x,attn_kv)# (l b nw) num_heads token dim//num_heads
+        q = rearrange(q, '(l bnw) num_heads token dim_divh -> bnw num_heads (l token) dim_divh', l=self.L, num_heads=self.num_heads)
+        k = rearrange(k, '(l bnw) num_heads token dim_divh -> bnw num_heads (l token) dim_divh', l=self.L, num_heads=self.num_heads)
+        v = rearrange(v, '(l bnw) num_heads token dim_divh -> bnw num_heads (l token) dim_divh', l=self.L, num_heads=self.num_heads)
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1)) # (b nw) num_heads (l token) (l token)
+
+        relative_position_bias = []
+        
+        for i in range(self.L * self.L):
+            relative_position_bias.append(self.relative_position_bias_table[i][self.relative_position_index.view(-1).long()].view(
+                self.win_size[0] * self.win_size[1], self.win_size[0] * self.win_size[1], -1))  # Wh*Ww,Wh*Ww,nH
+            relative_position_bias[i] = relative_position_bias[i].permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            ratio = attn.size(-1)//relative_position_bias[i].size(-1)
+            assert ratio == self.L
+            # relative_position_bias[i] = repeat(relative_position_bias[i], 'nH l c -> nH l (c d)', d = ratio)
+        
+        all_bias = torch.concat([relative_position_bias[i].unsqueeze(0) for i in range(self.L * self.L)], dim=0)
+        all_bias = rearrange(all_bias, '(l1 l2) num_heads token1 token2 -> 1 num_heads (l1 token1) (l2 token2)', l1=self.L, l2=self.L, num_heads=self.num_heads)
+        # print(attn.shape, all_bias.shape)
+        attn = attn + all_bias
+
+        # print('mask', mask)
+        
+        # print('mask ', self.mask_freq.shape)
+        # print('attn ', attn.shape)
+        attn = attn + self.mask_freq
+        
+        if mask is not None: # [nW, N, N]
+            nW = mask.shape[0]
+            # mask = repeat(mask, 'nW m n -> nW m (n d)',d = ratio)
+            mask = repeat(mask, 'nW token1 token2 -> nW (l1 token1) (l2 token2)', l1=self.L, l2=self.L)
+            attn = attn.view(B_ // self.L // nW, nW, self.num_heads, self.L * N, self.L * N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, self.L * N, self.L * N)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+        
+        # print(attn.shape, v.shape)
+
+        # print((attn @ v).shape)
+        # print(B_, N, C)
+        tmp = rearrange((attn @ v), 'bnw num_heads (l token) dim_divh -> (l bnw) num_heads token dim_divh', l=self.L, num_heads=self.num_heads)
+        
+        x = tmp.transpose(1, 2).reshape(B_, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        if self.need_kv:
+            return x, k, v
+        else:
+            return x, None, None
+
+    def extra_repr(self) -> str:
+        return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
+
+
 ########### self-attention #############
 class Attention(nn.Module):
     def __init__(self, dim,num_heads, token_projection='linear', qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
@@ -390,7 +517,9 @@ class LeWinTransformerBlock(nn.Module):
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,token_projection='linear',token_mlp='leff',
                  modulator=False,cross_modulator=False,
-                 need_kv=False):
+                 need_kv=False,
+                 encoder_msa_type=None,
+                 L=3):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -418,11 +547,31 @@ class LeWinTransformerBlock(nn.Module):
             self.cross_modulator = None
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(
-            dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-            token_projection=token_projection,
-            need_kv=need_kv)
+        
+        self.encoder_msa_type = encoder_msa_type
+        if encoder_msa_type == 'origin':
+            self.attn = WindowAttention(
+                dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
+                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+                token_projection=token_projection,
+                need_kv=need_kv)
+        elif encoder_msa_type == 'freq':
+            self.attn_intra = FrequencyWindowAttention(
+                dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
+                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+                token_projection=token_projection,
+                need_kv=need_kv,
+                type='intra',
+                L=L)
+            self.attn_inter = FrequencyWindowAttention(
+                dim, win_size=to_2tuple(self.win_size), num_heads=num_heads,
+                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+                token_projection=token_projection,
+                need_kv=need_kv,
+                type='inter',
+                L=L)
+        else:
+            assert False, 'MSA type error.'
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -509,7 +658,11 @@ class LeWinTransformerBlock(nn.Module):
             wmsa_in = x_windows
 
         # W-MSA/SW-MSA
-        attn_windows, K, V = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C
+        if self.encoder_msa_type == 'origin':
+            attn_windows, K, V = self.attn(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C (real order is B=L*B*nW)
+        else:
+            attn_windows, K, V = self.attn_intra(wmsa_in, mask=attn_mask)  # nW*B, win_size*win_size, C (real order is B=L*B*nW)
+            attn_windows, K, V = self.attn_inter(attn_windows, mask=attn_mask)  # nW*B, win_size*win_size, C (real order is B=L*B*nW)
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.win_size, self.win_size, C)
@@ -537,7 +690,9 @@ class BasicUformerLayer(nn.Module):
                  drop_path=0., norm_layer=nn.LayerNorm, use_checkpoint=False,
                  token_projection='linear',token_mlp='ffn', shift_flag=True,
                  modulator=False,cross_modulator=False,
-                 need_kv=False):
+                 need_kv=False,
+                 encoder_msa_type=None,
+                 L=3):
 
         super().__init__()
         self.dim = dim
@@ -556,7 +711,9 @@ class BasicUformerLayer(nn.Module):
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
-                                    need_kv=(need_kv and i + 1 == depth))
+                                    need_kv=(need_kv and i + 1 == depth),
+                                    encoder_msa_type=encoder_msa_type,
+                                    L=L)
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
@@ -569,7 +726,9 @@ class BasicUformerLayer(nn.Module):
                                     drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                     norm_layer=norm_layer,token_projection=token_projection,token_mlp=token_mlp,
                                     modulator=modulator,cross_modulator=cross_modulator,
-                                    need_kv=(need_kv and i + 1 == depth))
+                                    need_kv=(need_kv and i + 1 == depth),
+                                    encoder_msa_type=encoder_msa_type,
+                                    L=L)
             for i in range(depth)])
 
     def extra_repr(self) -> str:
@@ -586,7 +745,7 @@ class BasicUformerLayer(nn.Module):
 
 class Uformer(nn.Module):
     def __init__(self, opt, img_size=128, in_chans=3, out_chans=3,
-                 depths=[2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
+                 depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
@@ -597,6 +756,9 @@ class Uformer(nn.Module):
         
         self.opt = opt
         embed_dim = opt.encoder_embed_dim
+        
+        L = opt.L
+        encoder_msa_type = opt.encoder_msa_type
         
         need_kv = 'attention_kv' in opt.degradation_embedding_method
         
@@ -640,7 +802,9 @@ class Uformer(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            need_kv=need_kv)
+                            need_kv=need_kv,
+                            encoder_msa_type=encoder_msa_type,
+                            L=L)
         self.dowsample_0 = dowsample(embed_dim, embed_dim*2)
         self.encoderlayer_1 = BasicUformerLayer(dim=embed_dim*2,
                             output_dim=embed_dim*2,
@@ -656,7 +820,9 @@ class Uformer(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            need_kv=need_kv)
+                            need_kv=need_kv,
+                            encoder_msa_type=encoder_msa_type,
+                            L=L)
         self.dowsample_1 = dowsample(embed_dim*2, embed_dim*4)
         self.encoderlayer_2 = BasicUformerLayer(dim=embed_dim*4,
                             output_dim=embed_dim*4,
@@ -672,7 +838,9 @@ class Uformer(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            need_kv=need_kv)
+                            need_kv=need_kv,
+                            encoder_msa_type=encoder_msa_type,
+                            L=L)
         self.dowsample_2 = dowsample(embed_dim*4, embed_dim*8)
         self.encoderlayer_3 = BasicUformerLayer(dim=embed_dim*8,
                             output_dim=embed_dim*8,
@@ -688,7 +856,9 @@ class Uformer(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            need_kv=need_kv)
+                            need_kv=need_kv,
+                            encoder_msa_type=encoder_msa_type,
+                            L=L)
         self.dowsample_3 = dowsample(embed_dim*8, embed_dim*16)
 
         # Bottleneck
@@ -706,7 +876,9 @@ class Uformer(nn.Module):
                             norm_layer=norm_layer,
                             use_checkpoint=use_checkpoint,
                             token_projection=token_projection,token_mlp=token_mlp,shift_flag=shift_flag,
-                            need_kv=need_kv)
+                            need_kv=need_kv,
+                            encoder_msa_type=encoder_msa_type,
+                            L=L)
 
         self.apply(self._init_weights)
 
@@ -760,8 +932,8 @@ class UformerEncoder(nn.Module):
         self.img_size = img_size
         
         if not opt.L == 1:
-            self.preprocess_decompose = FrequencyDecompose('frequency_decompose_1', 1./(opt.L-1), img_size, img_size, inverse=False)
-            in_chans = in_chans * 2
+            self.preprocess_decompose = FrequencyDecompose('frequency_decompose_1', 1./(opt.L-1), img_size, img_size)
+            in_chans = in_chans
         
         self.uformer = Uformer(opt, img_size=img_size, in_chans=in_chans, out_chans=None, embed_dim=embed_dim)
         
@@ -785,12 +957,13 @@ class UformerEncoder(nn.Module):
         ) for i in range(opt.L)])
 
     def forward(self, x, mask=None):
+        assert mask == None
         # B C=3 H W
         B = x.shape[0]
         
         if not self.opt.L == 1:
-            x = self.preprocess_decompose(x) # b c h w -> l b c h w k=2(real, image)
-            x = rearrange(x, 'l b c h w k ->  (l b) (c k) h w')
+            x = self.preprocess_decompose(x) # b c h w -> l b c h w
+            x = rearrange(x, 'l b c h w ->  (l b) c h w')
         
         x = self.uformer(x, mask) # L*B H/16*W/16 embed_dim*16
         x = rearrange(x, '(l b) hw c ->  l b hw c', l=self.opt.L, b=B)
@@ -822,14 +995,16 @@ if __name__ == "__main__":
     from option import options as opt
     
     opt.degradation_embedding_method = ['all_3_bands']
-    opt.num_frequency_bands = 3
+    opt.L = 3
+    opt.encoder_msa_type = 'freq'
+    opt.encoder_embed_dim = 28
     
-    model_restoration = UformerEncoder(opt)
+    model_restoration = UformerEncoder(opt).cuda()
     # print(model_restoration)
     
     print('# model_restoration parameters: %.2f M'%(sum(param.numel() for param in model_restoration.parameters())/ 1e6))
     
-    x = torch.zeros((4, 3, 128, 128))
+    x = torch.zeros((4, 3, 128, 128)).cuda()
     fea, out, inter = model_restoration(x)
     # for x in inter[5]:
     #     print(x[0].shape, x[1].shape)

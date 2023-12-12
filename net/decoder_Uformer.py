@@ -1119,6 +1119,7 @@ class UformerDecoder(nn.Module):
         :param x: feature map: (B, C, H, W)
         :param inter: degradation representation: [(B, H*W, embed_dim), (B, H/2*W/2, embed_dim*2), (B, H/4*W/4, embed_dim*4), (B, H/8*W/8, embed_dim*8), (B, H/16*W/16, embed_dim*16)]
         '''
+        assert mask == None
         # tmp
         inter = [None, None, None, None, inter, [None, None, None, None, None]]
         

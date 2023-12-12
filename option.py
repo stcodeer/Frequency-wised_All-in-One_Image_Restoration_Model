@@ -47,6 +47,7 @@ parser.add_argument('--frequency_feature_enhancement_method', nargs='+', type=st
                     help='how feature maps used for calculating frequency domain losses are transformed to enhance contrast in the frequency domain, should be in [norm].(only available for Uformer encoder+decoder)')
 
 parser.add_argument('--L', type=int, default=3, help='number of frequency bands used in attention map frequency modulation.(only available for Uformer encoder+decoder)')
+parser.add_argument('--encoder_msa_type', type=str, default='freq', help='should be in [origin, freq].(only available for Uformer encoder+decoder)')
 
 # ViT encoder
 parser.add_argument('--out_channels', type=int, default=3, help='the hidden dimensionality of ViT encoder(only available for ViT encoder).')
