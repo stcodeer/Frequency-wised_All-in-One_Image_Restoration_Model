@@ -13,7 +13,7 @@ parser.add_argument('--frequency_l1_loss_weight', type=float, default=0.1, help=
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are training for.')
-parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_0', 'deraining', 'dehazing', 'deblurring'],
+parser.add_argument('--test_de_type', nargs='+', type=str, default=['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing', 'deblurring'],
                     help='which type of degradations are testing for.')
 # other available test type: 'denoising_urban100_15', 'denoising_urban100_25', 'denoising_urban100_50'
 
@@ -56,13 +56,15 @@ parser.add_argument('--frequency_decompose_type_2', type=bool, default=False, he
 
 options = parser.parse_args()
 
-if options.de_type[0] == '4tasks':
-    options.de_type = ['denoising_15', 'denoising_25', 'denoising_50', 'deraining']
+if options.de_type[0] == '2tasks':
+    options.de_type = ['denoising_0', 'deraining']
     options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining']
-    
-if options.de_type[0] == '5tasks':
-    options.de_type = ['denoising_15', 'denoising_25', 'denoising_50', 'deraining', 'dehazing']
+elif options.de_type[0] == '3tasks':
+    options.de_type = ['denoising_0', 'deraining', 'dehazing']
     options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing']
+elif options.de_type[0] == '4tasks':
+    options.de_type = ['denoising_0', 'deraining', 'dehazing', 'deblurring']
+    options.test_de_type = ['denoising_bsd68_15', 'denoising_bsd68_25', 'denoising_bsd68_50', 'deraining', 'dehazing', 'deblurring']
 
 options.batch_size = len(options.de_type)
 

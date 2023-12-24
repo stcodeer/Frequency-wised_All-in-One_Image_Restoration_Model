@@ -128,7 +128,7 @@ if __name__ == '__main__':
                 else:
                     torch.save(net.module.state_dict(), opt.ckpt_path + 'epoch_' + str(epoch + 1) + '.pth')
             
-            if (epoch + 1) % 1 == 0:
+            if epoch >= opt.epochs_encoder:
                 result_log_file.write('%s Epochs Results:\n'%str(epoch + 1))
                 
                 net.eval()

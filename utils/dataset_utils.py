@@ -122,7 +122,7 @@ class TrainDataset(Dataset):
         if 'denoising' in self.de_type[de_num]:
             sigma = int(self.de_type[de_num].split('_')[-1])
             if sigma == 0:
-                sigma = np.random.uniform(low=15, high=50)
+                sigma = np.random.choice([15, 25, 50])
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
         else:
             # self.log_file.write('input_id: ' + input_id + '\n')
@@ -177,7 +177,8 @@ class TestDataset(Dataset):
         if 'denoising' in self.de_type:
             sigma = int(self.de_type.split('_')[-1])
             if sigma == 0:
-                sigma = np.random.uniform(low=15, high=50)
+                assert False
+                # sigma = np.random.choice([15, 25, 50])
             input_img = np.clip(gt_img+np.random.randn(*gt_img.shape)*sigma, 0, 255).astype(np.uint8)
             input_name = gt_id.split("/")[-1].split('.')[0]
         else:
