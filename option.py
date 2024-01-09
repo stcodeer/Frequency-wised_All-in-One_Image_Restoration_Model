@@ -8,7 +8,7 @@ parser.add_argument('--cuda', type=int, default=0)
 parser.add_argument('--epochs', type=int, default=1000, help='maximum number of epochs to train the total model.')
 parser.add_argument('--epochs_encoder', type=int, default=100, help='number of epochs to train encoder.')
 parser.add_argument('--lr', type=float, default=None, help='learning rate of encoder.')
-parser.add_argument('--contrast_loss_weight', type=float, default=0.2, help='contrast loss weight in objective function.')
+parser.add_argument('--contrast_loss_weight', type=float, default=None, help='contrast loss weight in objective function.')
 parser.add_argument('--frequency_l1_loss_weight', type=float, default=0.1, help='frequency l1 loss weight in objective function.')
 
 parser.add_argument('--de_type', nargs='+', type=str, default=['denoising_0', 'deraining', 'dehazing', 'deblurring'],
@@ -55,6 +55,13 @@ parser.add_argument('--batch_wise_decompose', type=bool, default=False, help='us
 parser.add_argument('--frequency_decompose_type_2', type=bool, default=False, help='(only available for ViT encoder)')
 
 options = parser.parse_args()
+
+if options.L == 3:
+    contrast_loss_weight = 0.6
+elif options.L == 2:
+    contrast_loss_weight = 0.2
+else:
+    assert False
 
 if options.de_type[0] == '2tasks':
     options.de_type = ['denoising_0', 'deraining']
